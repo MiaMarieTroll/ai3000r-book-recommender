@@ -66,3 +66,10 @@ python main.py
 3. **Baseline Model** — Recommend top-N most popular books by average rating
 4. **Collaborative Filtering** — KNN model finds similar users and recommends books they liked
 5. **Evaluation** — Measure recommendation quality with Precision@K and Recall@K
+
+---
+
+## Authors
+- Mia — data loading, preprocessing, baseline model
+- TODO: Add name — collaborative filtering (KNN), evaluation
+
