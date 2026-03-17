@@ -12,6 +12,9 @@ from src.evaluation import evaluate_model
 
 
 def main():
+    # ============================================
+    # Load Data
+    # ============================================
     books = load_books("data/books.csv")
     ratings = load_ratings("data/ratings.csv")
 
@@ -22,11 +25,12 @@ def main():
     data_summary(ratings)
 
     # ============================================
-    # TODO 2: Preprocess
+    # Preprocess
     # ============================================
     ratings = clean_ratings(ratings)
     user_item_matrix = create_user_item_matrix(ratings)
     user_item_matrix = fill_missing(user_item_matrix)
+    print("User-item matrix ready:", user_item_matrix.shape)
 
     # ============================================
     # TODO 3: Baseline Model
