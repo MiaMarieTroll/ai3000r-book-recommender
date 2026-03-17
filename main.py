@@ -4,7 +4,7 @@ main.py
 Main pipeline for Book Recommender System
 """
 
-from src.data_loader import load_books, load_ratings
+from src.data_loader import load_books, load_ratings, data_summary
 from src.preprocessing import clean_ratings, create_user_item_matrix, fill_missing
 from src.collaborative_model import build_knn_model, recommend_books
 from src.baseline_model import compute_average_ratings, get_top_books
@@ -12,12 +12,14 @@ from src.evaluation import evaluate_model
 
 
 def main():
-
-    # ============================================
-    # TODO 1: Load Data
-    # ============================================
     books = load_books("data/books.csv")
     ratings = load_ratings("data/ratings.csv")
+
+    print("\nBooks data summary:")
+    data_summary(books)
+
+    print("\nRatings data summary:")
+    data_summary(ratings)
 
     # ============================================
     # TODO 2: Preprocess
