@@ -6,7 +6,7 @@
 ## Description
 This project implements a **collaborative filtering book recommender system** using the K-Nearest Neighbors (KNN) algorithm. The system recommends books to users based on the preferences of similar users.
 
-The project is inspired by the chapter *"Building a Recommendation System"* and covers:
+The project is inspired by the chapter *"Building a Recommendation System" in Artificial intelligence with Python : your complete guide to building intelligent apps using Python 3.x and TensorFlow 2* and covers:
 - Extracting nearest neighbors
 - Building a K-Nearest Neighbors classifier
 - Computing similarity scores

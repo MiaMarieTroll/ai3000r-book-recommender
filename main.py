@@ -9,6 +9,16 @@ from src.preprocessing import clean_ratings, create_user_item_matrix, fill_missi
 from src.collaborative_model import build_knn_model, recommend_books
 from src.baseline_model import compute_average_ratings, get_top_books
 from src.evaluation import evaluate_model
+import pandas as pd
+
+
+def print_result(title, value, max_rows=None):
+    print(f"\n{title}")
+    if isinstance(value, pd.DataFrame):
+        table = value.head(max_rows) if max_rows is not None else value
+        print(table.to_string(index=False))
+    else:
+        print(value)
 
 
 def main():
@@ -33,10 +43,12 @@ def main():
     print("User-item matrix ready:", user_item_matrix.shape)
 
     # ============================================
-    # TODO 3: Baseline Model
+    # Baseline Model
     # ============================================
+    print("\nRunning baseline model...")
     avg_ratings = compute_average_ratings(ratings)
     top_books = get_top_books(avg_ratings, books)
+    print_result("Baseline model complete. Top 5 books:", top_books, max_rows=5)
 
     # ============================================
     # TODO 4: Collaborative Filtering
@@ -55,11 +67,8 @@ def main():
     # ============================================
     evaluate_model()
 
-    print("Top Books (Baseline):")
-    print(top_books)
-
-    print("Recommendations:")
-    print(recommendations)
+    print_result("Top Books (Baseline):", top_books)
+    print_result("Recommendations:", recommendations)
 
 
 if __name__ == "__main__":
