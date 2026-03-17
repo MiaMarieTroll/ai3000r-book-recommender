@@ -53,9 +53,10 @@ def main():
     # ============================================
     # TODO 4: Collaborative Filtering
     # ============================================
-    knn_model = build_knn_model(user_item_matrix)
+    print("\nRunning KNN Model...")
+    knn_model = build_knn_model(user_item_matrix)    
 
-    recommendations = recommend_books(
+    recommended_user, recommendations = recommend_books(
         user_id=1,
         user_item_matrix=user_item_matrix,
         books_df=books,
@@ -68,6 +69,7 @@ def main():
     evaluate_model()
 
     print_result("Top Books (Baseline):", top_books)
+    print("Recommendations for user id:", recommended_user)
     print_result("Recommendations:", recommendations)
 
 
