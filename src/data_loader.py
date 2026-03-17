@@ -8,42 +8,30 @@ Responsible for:
 
 import pandas as pd
 
-
-# ============================================
-# TODO 1: Load books dataset
-# ============================================
-
 def load_books(path):
     """
     Load books.csv
     Return: pandas DataFrame
     """
-    # TODO:
-    # 1. Use pd.read_csv()
-    # 2. Print shape
-    # 3. Return dataframe
-    pass
-
-
-# ============================================
-# TODO 2: Load ratings dataset
-# ============================================
+    books_df = pd.read_csv(path)
+    print("Loaded books dataset with shape:", books_df.shape)
+    return books_df
 
 def load_ratings(path):
     """
     Load ratings.csv
     Return: pandas DataFrame
     """
-    # TODO:
-    # 1. Use pd.read_csv()
-    # 2. Print shape
-    # 3. Return dataframe
-    pass
+    ratings_df = pd.read_csv(path)
+    print("Loaded ratings dataset with shape:", ratings_df.shape)
 
+    required_columns = {"user_id", "book_id", "rating"}
+    missing_columns = required_columns - set(ratings_df.columns)
 
-# ============================================
-# TODO 3: Quick data overview
-# ============================================
+    if missing_columns:
+        raise ValueError(f"Missing required columns in ratings data: {sorted(missing_columns)}")
+
+    return ratings_df
 
 def data_summary(df):
     """
@@ -52,4 +40,11 @@ def data_summary(df):
     - info()
     - missing values
     """
-    pass
+    print("\nFirst 5 rows:")
+    print(df.head())
+
+    print("\nDataset info:")
+    df.info()
+
+    print("\nMissing values per column:")
+    print(df.isnull().sum())
