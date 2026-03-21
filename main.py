@@ -49,6 +49,7 @@ def main():
     avg_ratings = compute_average_ratings(ratings)
     top_books = get_top_books(avg_ratings, books)
     print_result("Baseline model complete. Top 5 books:", top_books, max_rows=5)
+    #print_result("Top Books (Baseline):", top_books)
 
     # ============================================
     # Collaborative Filtering
@@ -69,7 +70,6 @@ def main():
     # ============================================
     # Multiple Users Recommendations
     # ============================================
-    print("\n" + "=" * 60)
     print("Generating recommendations for multiple users...")
     print("=" * 60)
     
@@ -102,14 +102,17 @@ def main():
 
     # ============================================
     # TODO 5: Evaluation
-    print( "\nEvaluation, ikke ferdig)")
-    # ============================================
-    evaluate_model()
+    print("\nRunning evaluation...")
+    results = evaluate_model(
+        ratings_df=ratings,
+        books_df=books,
+        k=5,
+        test_size=0.2,
+        random_state=42,
+        max_users=100
+    )
 
-    print_result("Top Books (Baseline):", top_books)
-    print("Recommendations for user id:", target_user_id)
-    print_result("Recommendations:", recommendations)
-
+    print_result("Evaluation summary:", results)
 
 if __name__ == "__main__":
     main()

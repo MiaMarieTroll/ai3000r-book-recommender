@@ -74,6 +74,9 @@ def test_recommend_books():
         model=model,
         n=5
     )
+
+    assert "book_id" in recommendations.columns, "Recommendations must include book_id"
+    assert recommendations["book_id"].notna().all(), "Recommended book_id values cannot be null"
     
     print(f"✓ Generated {len(recommendations)} recommendations for user {target_user}")
     print("\nTop 3 recommendations:")

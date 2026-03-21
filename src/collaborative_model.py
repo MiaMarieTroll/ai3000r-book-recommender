@@ -118,8 +118,11 @@ def recommend_books(user_id, user_item_matrix, books_df, model, n=5):
         by=["score", "support"], ascending=[False, False]
     ).head(n)
 
+    # Keep only metadata columns needed for output to avoid book_id name collisions.
+    book_metadata = books_df[["id", "title", "authors"]].copy()
+
     merged = recommendations.merge(
-        books_df,
+        book_metadata,
         left_on="book_id",
         right_on="id",
         how="left"
