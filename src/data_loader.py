@@ -48,3 +48,5 @@ def data_summary(df):
 
     print("\nMissing values per column:")
     print(df.isnull().sum())
+
+
