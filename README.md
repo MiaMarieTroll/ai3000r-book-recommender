@@ -28,9 +28,22 @@ ai3000r-book-recommender/
 │   ├── preprocessing.py     # Clean data, build user-item matrix
 │   ├── baseline_model.py    # Popularity-based baseline recommender
 │   ├── collaborative_model.py  # KNN collaborative filtering
-│   └── evaluation.py        # Precision@K, Recall@K metrics
+│   ├── evaluation.py        # Precision@K, Recall@K metrics
+│   └── rag/
+│       ├── content_model.py     # Content-based filtering (Future)
+│       ├── retriever.py         # RAG retriever (Future)
+│       ├── generator.py         # RAG generator (Future)
+│       └── rag_pipeline.py      # RAG pipeline (Future)
+│
+├── tests/
+│   ├── __init__.py
+│   ├── test_data_loader.py
+│   ├── test_preprocessing.py
+│   ├── test_baseline_model.py
+│   └── test_collaborative.py  # Tests for collaborative filtering
 │
 ├── main.py                  # Main pipeline
+├── requirements.txt         # Project dependencies
 └── README.md
 ```
 
@@ -48,28 +61,40 @@ ai3000r-book-recommender/
 
 ## Setup
 ```bash
-pip install pandas numpy scikit-learn
+pip install -r requirements.txt
 ```
 
 ---
 
 ## How to Run
+
+### Main Pipeline
 ```bash
 python main.py
+```
+
+### Run Tests
+```bash
+python -m pytest tests/ -v
+```
+
+Run a single test module (optional):
+```bash
+python -m pytest tests/test_collaborative.py -v
 ```
 
 ---
 
 ## Pipeline Overview
-1. **Load Data** — Read `books.csv` and `ratings.csv`, print summary
-2. **Preprocess** — Clean ratings, build user-item matrix, fill missing values with 0
-3. **Baseline Model** — Recommend top-N most popular books by average rating
-4. **Collaborative Filtering** — KNN model finds similar users and recommends books they liked
-5. **Evaluation** — Measure recommendation quality with Precision@K and Recall@K
+1. **Load Data** ✅ — Read `books.csv` and `ratings.csv`, print summary
+2. **Preprocess** ✅ — Clean ratings, build user-item matrix, fill missing values with 0
+3. **Baseline Model** ✅ — Recommend top-N most popular books by average rating
+4. **Collaborative Filtering** ✅ — KNN model finds similar users and recommends books they liked
+5. **Evaluation** 📝 — Measure recommendation quality with Precision@K and Recall@K (in progress)
+6. **Testing** ✅ — Automated tests for `data_loader`, `preprocessing`, `baseline_model`, and `collaborative_model`
 
 ---
 
 ## Authors
-- Mia — data loading, preprocessing, baseline model
-- TODO: Add name — collaborative filtering (KNN), evaluation
-
+- Mia Marie Iversen Trollstøl — data loading, preprocessing, baseline model
+- Chui Ling Ng — collaborative filtering (KNN), evaluation

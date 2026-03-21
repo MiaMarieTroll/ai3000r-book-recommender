@@ -51,25 +51,63 @@ def main():
     print_result("Baseline model complete. Top 5 books:", top_books, max_rows=5)
 
     # ============================================
-    # TODO 4: Collaborative Filtering
+    # Collaborative Filtering
     # ============================================
     print("\nRunning KNN Model...")
-    knn_model = build_knn_model(user_item_matrix)    
+    knn_model = build_knn_model(user_item_matrix)
+    print("KNN model fitted successfully.")
 
-    recommended_user, recommendations = recommend_books(
-        user_id=1,
+    target_user_id = 5
+    recommendations = recommend_books(
+        user_id=target_user_id,
         user_item_matrix=user_item_matrix,
         books_df=books,
         model=knn_model
     )
+    print_result("Recommendations for user id " + str(target_user_id) + ":", recommendations)
+
+    # ============================================
+    # Multiple Users Recommendations
+    # ============================================
+    print("\n" + "=" * 60)
+    print("Generating recommendations for multiple users...")
+    print("=" * 60)
+    
+    test_user_ids = [1, 5, 10, 20]
+    all_recommendations = []
+
+    for uid in test_user_ids:
+        if uid in user_item_matrix.index:
+            user_recs = recommend_books(
+                user_id=uid,
+                user_item_matrix=user_item_matrix,
+                books_df=books,
+                model=knn_model,
+                n=3
+            )
+            
+            # Get the top recommended book for each user
+            if len(user_recs) > 0:
+                top_rec = user_recs.iloc[0]
+                all_recommendations.append({
+                    "user_id": uid,
+                    "recommended_book": top_rec["title"],
+                    "author": top_rec["authors"],
+                    "score": round(top_rec["score"], 2)
+                })
+
+    if all_recommendations:
+        comparison_df = pd.DataFrame(all_recommendations)
+        print_result("Top Recommendation per User:", comparison_df)
 
     # ============================================
     # TODO 5: Evaluation
+    print( "\nEvaluation, ikke ferdig)")
     # ============================================
     evaluate_model()
 
     print_result("Top Books (Baseline):", top_books)
-    print("Recommendations for user id:", recommended_user)
+    print("Recommendations for user id:", target_user_id)
     print_result("Recommendations:", recommendations)
 
 

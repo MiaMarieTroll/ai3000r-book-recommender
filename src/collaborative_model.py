@@ -9,7 +9,7 @@ import pandas as pd
 
 
 # ============================================
-# TODO 1: Build KNN model
+# Build KNN model
 # ============================================
 
 def build_knn_model(user_item_matrix):
@@ -23,7 +23,7 @@ def build_knn_model(user_item_matrix):
 
 
 # ============================================
-# TODO 2: Find similar users
+# Find similar users
 # ============================================
 
 def find_similar_users(model, user_item_matrix, user_id, k=5):
@@ -56,7 +56,7 @@ def find_similar_users(model, user_item_matrix, user_id, k=5):
 
 
 # ============================================
-# TODO 3: Generate recommendations
+# Generate recommendations
 # ============================================
 
 def recommend_books(user_id, user_item_matrix, books_df, model, n=5):
@@ -131,4 +131,5 @@ def recommend_books(user_id, user_item_matrix, books_df, model, n=5):
     result = merged[selected_cols].reset_index(drop=True)
     result.insert(0, "rank", result.index + 1)
 
-    return user_id, result
+    # Return only the recommendation table so main.py can print/process it directly.
+    return result
