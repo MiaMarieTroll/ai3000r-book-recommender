@@ -6,16 +6,24 @@ User-based collaborative filtering using KNN
 
 from sklearn.neighbors import NearestNeighbors
 import pandas as pd
+import numpy as np
 
 
 # ============================================
 # Build KNN model
 # ============================================
 
-def build_knn_model(user_item_matrix):
+def build_knn_model(user_item_matrix, normalize=False):
     """
     Build and fit a KNN model using cosine similarity.
-
+    
+    Parameters
+    ----------
+    user_item_matrix : DataFrame
+        User-item rating matrix
+    normalize : bool
+        Unused - kept for compatibility.
+    
     """
     model = NearestNeighbors(metric="cosine", algorithm="brute")
     model.fit(user_item_matrix.values)
@@ -97,7 +105,7 @@ def recommend_books(user_id, user_item_matrix, books_df, model, n=5):
             if book_id in already_rated:
                 continue
 
-            # Weighted score: stronger similar users contribute more
+            # Weighted score: rating * similarity (higher similarity = more weight)
             weighted_score = rating * similarity
 
             book_scores[book_id] = book_scores.get(book_id, 0) + weighted_score

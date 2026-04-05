@@ -76,9 +76,19 @@ def evaluate_model(
     test_size=0.2,
     random_state=42,
     max_users=None,
-    min_test_rating=4,
+    min_test_rating=3.0,
     progress_every=50,
 ):
+    """
+    Evaluate collaborative filtering model.
+    
+    Parameters
+    ----------
+    k : int
+        k for evaluation (precision@k, recall@k). Default 5.
+    min_test_rating : float
+        Minimum rating to consider as "relevant" in test set. Default 3.0 (lowered from 4).
+    """
     if ratings_df is None:
         print("Evaluation skipped: ratings_df must be provided.")
         return {
@@ -110,6 +120,7 @@ def evaluate_model(
     user_item_matrix = fill_missing(user_item_matrix)
 
     print(f"User-item matrix shape: {user_item_matrix.shape}")
+    print(f"Sparsity: {(user_item_matrix == 0).sum().sum() / (user_item_matrix.shape[0] * user_item_matrix.shape[1]) * 100:.1f}%")
     print(f"Missing values after fill: {int(user_item_matrix.isna().sum().sum())}")
 
     model = build_knn_model(user_item_matrix)
@@ -117,7 +128,7 @@ def evaluate_model(
     relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
 
     if relevant_test_df.empty:
-        print("Evaluation skipped: no relevant test items found.")
+        print(f"Evaluation skipped: no relevant test items found (min_rating={min_test_rating}).")
         return {
             "precision@k": 0.0,
             "recall@k": 0.0,
@@ -125,6 +136,9 @@ def evaluate_model(
         }
 
     relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
+
+    print(f"Test items (rating >= {min_test_rating}): {len(relevant_test_df)}")
+    print(f"Users with test items: {len(relevant_by_user)}")
 
     common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
     if max_users is not None:
@@ -134,7 +148,6 @@ def evaluate_model(
 
     user_ids = user_item_matrix.index.to_numpy()
     item_ids = user_item_matrix.columns.to_numpy()
-    # float32 reduces memory bandwidth pressure during repeated scoring.
     matrix_values = user_item_matrix.to_numpy(dtype=np.float32, copy=False)
     user_to_pos = {uid: i for i, uid in enumerate(user_ids)}
 
@@ -183,6 +196,149 @@ def evaluate_model(
 
     print("\nEvaluation Results")
     print("------------------")
+    print(f"Precision@{k}: {results['precision@k']}")
+    print(f"Recall@{k}: {results['recall@k']}")
+    print(f"Evaluated users: {results['evaluated_users']}")
+
+    return results
+
+
+def evaluate_model_svd(
+    ratings_df=None,
+    books_df=None,
+    k=5,
+    test_size=0.2,
+    random_state=42,
+    max_users=None,
+    min_test_rating=3.0,
+    progress_every=50,
+    n_factors=50,
+):
+    """
+    Evaluate matrix factorization (SVD) model.
+    
+    Parameters
+    ----------
+    k : int
+        k for evaluation (precision@k, recall@k). Default 5.
+    min_test_rating : float
+        Minimum rating to consider as "relevant" in test set. Default 3.0.
+    n_factors : int
+        Number of latent factors for SVD. Default 50.
+    """
+    if ratings_df is None:
+        print("Evaluation skipped: ratings_df must be provided.")
+        return {
+            "precision@k": 0.0,
+            "recall@k": 0.0,
+            "evaluated_users": 0,
+        }
+
+    required_cols = {"user_id", "book_id", "rating"}
+    missing_cols = required_cols - set(ratings_df.columns)
+    if missing_cols:
+        raise ValueError(f"ratings_df is missing required columns: {sorted(missing_cols)}")
+
+    if ratings_df.empty:
+        print("Evaluation skipped: ratings_df is empty.")
+        return {
+            "precision@k": 0.0,
+            "recall@k": 0.0,
+            "evaluated_users": 0,
+        }
+
+    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    split_idx = int(len(shuffled) * (1 - test_size))
+
+    train_df = shuffled.iloc[:split_idx].copy()
+    test_df = shuffled.iloc[split_idx:].copy()
+
+    user_item_matrix = create_user_item_matrix(train_df)
+    user_item_matrix = fill_missing(user_item_matrix)
+
+    print(f"User-item matrix shape: {user_item_matrix.shape}")
+    print(f"Missing values after fill: {int(user_item_matrix.isna().sum().sum())}")
+
+    # Build SVD model
+    from src.matrix_factorization_model import build_svd_model
+    svd_model = build_svd_model(user_item_matrix, n_factors=n_factors)
+
+    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+
+    if relevant_test_df.empty:
+        print(f"Evaluation skipped: no relevant test items found (min_rating={min_test_rating}).")
+        return {
+            "precision@k": 0.0,
+            "recall@k": 0.0,
+            "evaluated_users": 0,
+        }
+
+    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
+
+    print(f"Test items (rating >= {min_test_rating}): {len(relevant_test_df)}")
+    print(f"Users with test items: {len(relevant_by_user)}")
+
+    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
+    if max_users is not None:
+        common_users = common_users[:max_users]
+
+    print(f"Evaluating {len(common_users)} users (k={k}, n_factors={n_factors})...")
+
+    user_ids = user_item_matrix.index.to_numpy()
+    item_ids = user_item_matrix.columns.to_numpy()
+    matrix_values_dense = user_item_matrix.to_numpy(dtype=np.float64)
+    user_to_pos = {uid: i for i, uid in enumerate(user_ids)}
+
+    precisions = []
+    recalls = []
+
+    for i, user_id in enumerate(common_users, start=1):
+        user_pos = user_to_pos[user_id]
+        relevant_items = relevant_by_user[user_id]
+
+        try:
+            # Get user latent vector
+            user_vector = matrix_values_dense[user_pos]
+            user_latent = svd_model.transform(user_vector.reshape(1, -1))[0]
+
+            # Get item latent vectors
+            item_latents = svd_model.components_.T
+
+            # Compute cosine similarities
+            similarities = item_latents @ user_latent / (
+                np.linalg.norm(item_latents, axis=1) * np.linalg.norm(user_latent) + 1e-9
+            )
+
+            # Remove already-rated items
+            already_rated = user_vector > 0
+            similarities[already_rated] = -np.inf
+
+            # Get top k
+            top_idx = np.argsort(similarities)[-k:][::-1]
+            top_idx = top_idx[np.isfinite(similarities[top_idx])]
+
+            recommended_items = item_ids[top_idx].tolist() if len(top_idx) > 0 else []
+
+        except Exception:
+            recommended_items = []
+
+        precisions.append(precision_at_k(recommended_items, relevant_items, k))
+        recalls.append(recall_at_k(recommended_items, relevant_items, k))
+
+        if progress_every and i % progress_every == 0:
+            print(f"Processed {i}/{len(common_users)} users...")
+
+    avg_precision = float(np.mean(precisions)) if precisions else 0.0
+    avg_recall = float(np.mean(recalls)) if recalls else 0.0
+
+    results = {
+        "precision@k": round(avg_precision, 4),
+        "recall@k": round(avg_recall, 4),
+        "evaluated_users": len(precisions),
+    }
+
+    print("\nEvaluation Results (SVD)")
+    print("------------------------")
     print(f"Precision@{k}: {results['precision@k']}")
     print(f"Recall@{k}: {results['recall@k']}")
     print(f"Evaluated users: {results['evaluated_users']}")
