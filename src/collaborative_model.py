@@ -67,7 +67,7 @@ def find_similar_users(model, user_item_matrix, user_id, k=5):
 # Generate recommendations
 # ============================================
 
-def recommend_books(user_id, user_item_matrix, books_df, model, n=5):
+def recommend_books(user_id, user_item_matrix, books_df, model, n=5, similar_k=20):
     """
     Generate top-n book recommendations for a user.
 
@@ -82,7 +82,7 @@ def recommend_books(user_id, user_item_matrix, books_df, model, n=5):
     if user_id not in user_item_matrix.index:
         raise ValueError(f"user_id {user_id} not found in user-item matrix.")
 
-    similar_users = find_similar_users(model, user_item_matrix, user_id, k=5)
+    similar_users = find_similar_users(model, user_item_matrix, user_id, k=similar_k)
 
     if not similar_users:
         return pd.DataFrame(columns=["book_id", "title", "authors", "score"])

@@ -7,7 +7,14 @@ Meaningful tests for preprocessing functions
 import pandas as pd
 import numpy as np
 from src.data_loader import load_books, load_ratings
-from src.preprocessing import clean_ratings, create_user_item_matrix, fill_missing
+from src.data_loader import load_book_tags, load_tags, load_to_read
+from src.preprocessing import (
+    clean_ratings,
+    create_user_item_matrix,
+    fill_missing,
+    build_book_tag_features,
+    build_user_tag_profile,
+)
 
 
 def test_clean_ratings_removes_duplicates():
@@ -137,6 +144,45 @@ def test_preprocessing_pipeline():
     print(f"  Sparsity: {(filled.values == 0).sum() / filled.size * 100:.1f}%")
 
 
+def test_build_book_tag_features():
+    """Test cleaned and weighted book-tag features."""
+    print("\n=== Test 7: Build Book Tag Features ===")
+
+    book_tags = load_book_tags("data/book_tags.csv")
+    tags = load_tags("data/tags.csv")
+    features = build_book_tag_features(book_tags, tags)
+
+    assert isinstance(features, pd.DataFrame)
+    assert set(["book_id", "tag_name", "tag_weight"]).issubset(features.columns)
+    assert len(features) > 0, "Expected non-empty tag features"
+    assert (features["tag_weight"] >= 0).all(), "Tag weights should be non-negative"
+
+    per_book_sum = features.groupby("book_id")["tag_weight"].sum()
+    assert ((per_book_sum > 0.99) & (per_book_sum < 1.01)).all(), "Tag weights should normalize per book"
+    print("✓ Book-tag features built and normalized")
+
+
+def test_build_user_tag_profile():
+    """Test user tag profile from ratings and to-read signals."""
+    print("\n=== Test 8: Build User Tag Profile ===")
+
+    ratings = load_ratings("data/ratings.csv")
+    to_read = load_to_read("data/to_read.csv")
+    book_tags = load_book_tags("data/book_tags.csv")
+    tags = load_tags("data/tags.csv")
+
+    features = build_book_tag_features(book_tags, tags)
+    profile = build_user_tag_profile(ratings, to_read, features)
+
+    assert isinstance(profile, pd.DataFrame)
+    assert set(["user_id", "tag_name", "tag_score"]).issubset(profile.columns)
+    assert len(profile) > 0, "Expected non-empty user tag profile"
+
+    per_user_sum = profile.groupby("user_id")["tag_score"].sum()
+    assert ((per_user_sum > 0.99) & (per_user_sum < 1.01)).all(), "Tag scores should normalize per user"
+    print("✓ User tag profile built and normalized")
+
+
 def run_all_tests():
     """Run all tests"""
     print("=" * 60)
@@ -150,6 +196,8 @@ def run_all_tests():
         test_create_user_item_matrix_values()
         test_fill_missing_fills_with_zero()
         test_preprocessing_pipeline()
+        test_build_book_tag_features()
+        test_build_user_tag_profile()
         
         print("\n" + "=" * 60)
         print("✓ ALL TESTS PASSED")

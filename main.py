@@ -4,12 +4,31 @@ main.py
 Main pipeline for Book Recommender System
 """
 
-from src.data_loader import load_books, load_ratings, data_summary
-from src.preprocessing import clean_ratings, create_user_item_matrix, fill_missing
+from src.data_loader import (
+    load_books,
+    load_ratings,
+    load_book_tags,
+    load_tags,
+    load_to_read,
+    data_summary,
+)
+from src.preprocessing import (
+    clean_ratings,
+    create_user_item_matrix,
+    fill_missing,
+    build_book_tag_features,
+    build_user_tag_profile,
+)
 from src.collaborative_model import build_knn_model, recommend_books
 from src.matrix_factorization_model import build_svd_model, get_recommendations_svd
 from src.baseline_model import compute_average_ratings, get_top_books
-from src.evaluation import evaluate_model, evaluate_model_svd
+from src.evaluation import (
+    evaluate_model,
+    evaluate_model_svd,
+    evaluate_model_hybrid_knn,
+    evaluate_model_hybrid_svd,
+)
+from src.rag.content_model import rerank_recommendations_hybrid
 import pandas as pd
 
 
@@ -23,11 +42,23 @@ def print_result(title, value, max_rows=None):
 
 
 def main():
+    svd_factors = 120
+
+    # Hybrid weights (set to_read_weight=0.0 to disable to-read signal).
+    hybrid_weights = {
+        "collaborative_weight": 0.90,
+        "content_weight": 0.10,
+        "to_read_weight": 0.0,
+    }
+
     # ============================================
     # Load Data
     # ============================================
     books = load_books("data/books.csv")
     ratings = load_ratings("data/ratings.csv")
+    book_tags = load_book_tags("data/book_tags.csv")
+    tags = load_tags("data/tags.csv")
+    to_read = load_to_read("data/to_read.csv")
 
     print("\nBooks data summary:")
     data_summary(books)
@@ -42,6 +73,22 @@ def main():
     user_item_matrix = create_user_item_matrix(ratings)
     user_item_matrix = fill_missing(user_item_matrix)
     print("User-item matrix ready:", user_item_matrix.shape)
+
+    # Build content/intent features from tags and to-read signals.
+    book_tag_features = build_book_tag_features(
+        book_tags,
+        tags,
+        min_count=5,
+        max_tags_per_book=10,
+    )
+    user_tag_profile = build_user_tag_profile(
+        ratings,
+        to_read,
+        book_tag_features,
+        to_read_weight=hybrid_weights["to_read_weight"],
+    )
+    print("Book-tag features shape:", book_tag_features.shape)
+    print("User-tag profile shape:", user_tag_profile.shape)
 
     # ============================================
     # Baseline Model
@@ -64,9 +111,23 @@ def main():
         user_id=target_user_id,
         user_item_matrix=user_item_matrix,
         books_df=books,
-        model=knn_model
+        model=knn_model,
+        n=100,
+        similar_k=40,
     )
-    print_result("Recommendations for user id " + str(target_user_id) + ":", recommendations)
+
+    recommendations_hybrid = rerank_recommendations_hybrid(
+        recommendations_df=recommendations,
+        user_id=target_user_id,
+        book_tag_features_df=book_tag_features,
+        user_tag_profile_df=user_tag_profile,
+        to_read_df=to_read,
+        **hybrid_weights,
+    )
+    print_result(
+        "Hybrid recommendations for user id " + str(target_user_id) + ":",
+        recommendations_hybrid,
+    )
 
     # ============================================
     # Multiple Users Recommendations
@@ -84,7 +145,17 @@ def main():
                 user_item_matrix=user_item_matrix,
                 books_df=books,
                 model=knn_model,
-                n=3
+                n=100,
+                similar_k=40,
+            )
+
+            user_recs = rerank_recommendations_hybrid(
+                recommendations_df=user_recs,
+                user_id=uid,
+                book_tag_features_df=book_tag_features,
+                user_tag_profile_df=user_tag_profile,
+                to_read_df=to_read,
+                **hybrid_weights,
             )
             
             # Get the top recommended book for each user
@@ -94,7 +165,7 @@ def main():
                     "user_id": uid,
                     "recommended_book": top_rec["title"],
                     "author": top_rec["authors"],
-                    "score": round(top_rec["score"], 2)
+                    "score": round(top_rec["hybrid_score"], 3)
                 })
 
     if all_recommendations:
@@ -116,6 +187,22 @@ def main():
 
     print_result("KNN Evaluation summary:", results)
 
+    print("\nRunning hybrid KNN evaluation...")
+    hybrid_knn_results = evaluate_model_hybrid_knn(
+        ratings_df=ratings,
+        books_df=books,
+        book_tag_features_df=book_tag_features,
+        to_read_df=to_read,
+        k=5,
+        test_size=0.2,
+        random_state=42,
+        max_users=100,
+        min_test_rating=3.0,
+        candidate_n=100,
+        **hybrid_weights,
+    )
+    print_result("Hybrid KNN Evaluation summary:", hybrid_knn_results)
+
     # ============================================
     # Matrix Factorization Model (SVD)
     # ============================================
@@ -124,7 +211,7 @@ def main():
     print("=" * 60)
     
     print("\nBuilding SVD model...")
-    svd_model = build_svd_model(user_item_matrix, n_factors=50)
+    svd_model = build_svd_model(user_item_matrix, n_factors=svd_factors)
     print("SVD model fitted successfully.")
 
     target_user_id = 5
@@ -132,9 +219,22 @@ def main():
         user_id=target_user_id,
         user_item_matrix=user_item_matrix,
         books_df=books,
-        svd_model=svd_model
+        svd_model=svd_model,
+        n=100,
     )
-    print_result("SVD Recommendations for user id " + str(target_user_id) + ":", svd_recommendations)
+
+    svd_recommendations_hybrid = rerank_recommendations_hybrid(
+        recommendations_df=svd_recommendations,
+        user_id=target_user_id,
+        book_tag_features_df=book_tag_features,
+        user_tag_profile_df=user_tag_profile,
+        to_read_df=to_read,
+        **hybrid_weights,
+    )
+    print_result(
+        "SVD hybrid recommendations for user id " + str(target_user_id) + ":",
+        svd_recommendations_hybrid,
+    )
 
     # ============================================
     # Multiple Users Recommendations (SVD)
@@ -151,7 +251,16 @@ def main():
                 user_item_matrix=user_item_matrix,
                 books_df=books,
                 svd_model=svd_model,
-                n=3
+                n=100,
+            )
+
+            user_recs = rerank_recommendations_hybrid(
+                recommendations_df=user_recs,
+                user_id=uid,
+                book_tag_features_df=book_tag_features,
+                user_tag_profile_df=user_tag_profile,
+                to_read_df=to_read,
+                **hybrid_weights,
             )
             
             # Get the top recommended book for each user
@@ -161,7 +270,7 @@ def main():
                     "user_id": uid,
                     "recommended_book": top_rec["title"],
                     "author": top_rec["authors"],
-                    "score": round(top_rec["score"], 2)
+                    "score": round(top_rec["hybrid_score"], 3)
                 })
 
     if svd_all_recommendations:
@@ -180,10 +289,28 @@ def main():
         random_state=42,
         max_users=100,
         min_test_rating=3.0,
-        n_factors=50
+        n_factors=svd_factors
     )
 
     print_result("SVD Evaluation summary:", svd_results)
+
+    print("\nRunning hybrid SVD evaluation (candidate_n=100)...")
+    hybrid_svd_results = evaluate_model_hybrid_svd(
+        ratings_df=ratings,
+        books_df=books,
+        book_tag_features_df=book_tag_features,
+        to_read_df=to_read,
+        k=5,
+        test_size=0.2,
+        random_state=42,
+        max_users=100,
+        min_test_rating=3.0,
+        n_factors=svd_factors,
+        candidate_n=100,
+        **hybrid_weights,
+    )
+
+    print_result("Hybrid SVD Evaluation summary:", hybrid_svd_results)
 
     # ============================================
     # SVD Factor Tuning
@@ -232,10 +359,34 @@ def main():
     
     comparison_results = pd.DataFrame(
         {
-            "Model": ["KNN", "SVD (50 factors)", f"SVD tuned ({best_factors} factors)"],
-            "Precision@5": [results["precision@k"], svd_results["precision@k"], best_precision],
-            "Recall@5": [results["recall@k"], svd_results["recall@k"], best_recall],
-            "Evaluated Users": [results["evaluated_users"], svd_results["evaluated_users"], svd_results["evaluated_users"]],
+            "Model": [
+                "KNN",
+                "KNN + Hybrid rerank",
+                f"SVD ({svd_factors} factors)",
+                    f"SVD + Hybrid rerank ({svd_factors} factors)",
+                f"SVD tuned ({best_factors} factors)",
+            ],
+            "Precision@5": [
+                results["precision@k"],
+                hybrid_knn_results["precision@k"],
+                svd_results["precision@k"],
+                hybrid_svd_results["precision@k"],
+                best_precision,
+            ],
+            "Recall@5": [
+                results["recall@k"],
+                hybrid_knn_results["recall@k"],
+                svd_results["recall@k"],
+                hybrid_svd_results["recall@k"],
+                best_recall,
+            ],
+            "Evaluated Users": [
+                results["evaluated_users"],
+                hybrid_knn_results["evaluated_users"],
+                svd_results["evaluated_users"],
+                hybrid_svd_results["evaluated_users"],
+                svd_results["evaluated_users"],
+            ],
         }
     )
     

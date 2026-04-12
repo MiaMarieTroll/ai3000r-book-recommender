@@ -5,7 +5,14 @@ Meaningful tests for data_loader functions
 """
 
 import pandas as pd
-from src.data_loader import load_books, load_ratings, data_summary
+from src.data_loader import (
+    load_books,
+    load_ratings,
+    load_book_tags,
+    load_tags,
+    load_to_read,
+    data_summary,
+)
 
 
 def test_load_books():
@@ -86,6 +93,39 @@ def test_data_summary():
         raise AssertionError(f"data_summary failed: {e}")
 
 
+def test_load_book_tags_tags_to_read():
+    """Test that tag/to-read datasets load with required columns"""
+    print("\n=== Test 5: Load book_tags, tags, to_read ===")
+
+    book_tags = load_book_tags("data/book_tags.csv")
+    tags = load_tags("data/tags.csv")
+    to_read = load_to_read("data/to_read.csv")
+
+    assert isinstance(book_tags, pd.DataFrame)
+    assert isinstance(tags, pd.DataFrame)
+    assert isinstance(to_read, pd.DataFrame)
+
+    for col in ["goodreads_book_id", "tag_id", "count"]:
+        assert col in book_tags.columns, f"Missing required column in book_tags: {col}"
+
+    for col in ["tag_id", "tag_name"]:
+        assert col in tags.columns, f"Missing required column in tags: {col}"
+
+    for col in ["user_id", "book_id"]:
+        assert col in to_read.columns, f"Missing required column in to_read: {col}"
+
+    assert len(book_tags) > 0
+    assert len(tags) > 0
+    assert len(to_read) > 0
+    print("✓ Tag and to-read datasets loaded successfully")
+
+
+def test_load_ratings_missing_columns():
+    """Placeholder for manual runner compatibility."""
+    ratings = load_ratings("data/ratings.csv")
+    assert {"user_id", "book_id", "rating"}.issubset(ratings.columns)
+
+
 def run_all_tests():
     """Run all tests"""
     print("=" * 60)
@@ -97,6 +137,7 @@ def run_all_tests():
         test_load_ratings()
         test_load_ratings_missing_columns()
         test_data_summary()
+        test_load_book_tags_tags_to_read()
         
         print("\n" + "=" * 60)
         print("✓ ALL TESTS PASSED")

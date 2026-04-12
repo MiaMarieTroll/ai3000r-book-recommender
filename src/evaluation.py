@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import os
 import sys
 
@@ -8,8 +9,9 @@ if __package__ is None or __package__ == "":
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
 
-from src.preprocessing import create_user_item_matrix, fill_missing
+from src.preprocessing import create_user_item_matrix, fill_missing, build_user_tag_profile
 from src.collaborative_model import build_knn_model
+from src.rag.content_model import compute_content_scores, rerank_recommendations_hybrid
 
 
 def precision_at_k(recommended_items, relevant_items, k):
@@ -67,6 +69,110 @@ def recommend_book_ids_fast_from_neighbors(
     top_idx = top_idx[np.argsort(weighted_scores[top_idx])[::-1]]
 
     return item_ids[top_idx].tolist()
+
+
+def recommend_candidates_fast_from_neighbors(
+    user_pos,
+    neighbor_positions,
+    neighbor_distances,
+    matrix_values,
+    item_ids,
+    n=30,
+):
+    """
+    Fast candidate generation with scores from nearest-neighbor results.
+    Returns DataFrame: [book_id, score].
+    """
+    # Remove self if present in neighbor list.
+    mask = neighbor_positions != user_pos
+    neighbor_positions = neighbor_positions[mask]
+    neighbor_distances = neighbor_distances[mask]
+
+    if len(neighbor_positions) == 0:
+        return pd.DataFrame(columns=["book_id", "score"])
+
+    similarities = 1 / (1 + neighbor_distances)
+    neighbor_matrix = matrix_values[neighbor_positions]
+    weighted_scores = np.average(neighbor_matrix, axis=0, weights=similarities)
+
+    already_rated = matrix_values[user_pos] > 0
+    weighted_scores[already_rated] = -np.inf
+
+    finite_mask = np.isfinite(weighted_scores)
+    candidate_count = int(finite_mask.sum())
+    if candidate_count == 0:
+        return pd.DataFrame(columns=["book_id", "score"])
+
+    n_select = min(n, candidate_count)
+    top_idx = np.argpartition(weighted_scores, -n_select)[-n_select:]
+    top_idx = top_idx[np.argsort(weighted_scores[top_idx])[::-1]]
+
+    return pd.DataFrame(
+        {
+            "book_id": item_ids[top_idx],
+            "score": weighted_scores[top_idx],
+        }
+    ).reset_index(drop=True)
+
+
+def recommend_candidates_with_content_boost(
+    user_id,
+    similarities,
+    item_ids,
+    already_rated_mask,
+    book_tag_features_df,
+    user_tag_profile_df,
+    candidate_n=100,
+    content_candidate_n=None,
+):
+    """
+    Build an expanded candidate pool for SVD reranking.
+
+    The pool combines top SVD-scored items with top content-matched items so
+    the hybrid reranker has candidates with non-zero tag affinity.
+    """
+    if content_candidate_n is None:
+        content_candidate_n = candidate_n
+
+    finite_mask = np.isfinite(similarities)
+    candidate_count = int(finite_mask.sum())
+    if candidate_count == 0:
+        return pd.DataFrame(columns=["book_id", "score"])
+
+    n_select = min(max(candidate_n, 1), candidate_count)
+    top_idx = np.argpartition(similarities, -n_select)[-n_select:]
+    top_idx = top_idx[np.argsort(similarities[top_idx])[::-1]]
+
+    svd_candidates = pd.DataFrame(
+        {
+            "book_id": item_ids[top_idx],
+            "score": similarities[top_idx],
+        }
+    )
+
+    unrated_item_ids = item_ids[~already_rated_mask]
+    content_scores = compute_content_scores(
+        user_id=user_id,
+        candidate_book_ids=unrated_item_ids.tolist(),
+        book_tag_features_df=book_tag_features_df,
+        user_tag_profile_df=user_tag_profile_df,
+    )
+
+    content_df = pd.DataFrame(
+        {
+            "book_id": list(content_scores.keys()),
+            "score": list(content_scores.values()),
+        }
+    )
+    content_df = content_df[content_df["score"] > 0].sort_values("score", ascending=False)
+    content_df = content_df.head(min(content_candidate_n, len(content_df)))
+
+    combined = pd.concat([svd_candidates, content_df], ignore_index=True)
+    if combined.empty:
+        return pd.DataFrame(columns=["book_id", "score"])
+
+    combined = combined.groupby("book_id", as_index=False)["score"].max()
+    return combined.sort_values("score", ascending=False).reset_index(drop=True)
 
 
 def evaluate_model(
@@ -344,3 +450,260 @@ def evaluate_model_svd(
     print(f"Evaluated users: {results['evaluated_users']}")
 
     return results
+
+
+def evaluate_model_hybrid_knn(
+    ratings_df=None,
+    books_df=None,
+    book_tag_features_df=None,
+    to_read_df=None,
+    k=5,
+    candidate_n=30,
+    test_size=0.2,
+    random_state=42,
+    max_users=None,
+    min_test_rating=3.0,
+    progress_every=50,
+    collaborative_weight=0.7,
+    content_weight=0.2,
+    to_read_weight=0.1,
+):
+    """
+    Evaluate KNN + hybrid reranking (tags + to-read).
+    """
+    if book_tag_features_df is None or to_read_df is None:
+        raise ValueError("Hybrid KNN evaluation requires book_tag_features_df and to_read_df.")
+
+    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    split_idx = int(len(shuffled) * (1 - test_size))
+    train_df = shuffled.iloc[:split_idx].copy()
+    test_df = shuffled.iloc[split_idx:].copy()
+
+    user_item_matrix = create_user_item_matrix(train_df)
+    user_item_matrix = fill_missing(user_item_matrix)
+    model = build_knn_model(user_item_matrix)
+
+    user_tag_profile_df = build_user_tag_profile(
+        ratings_df=train_df,
+        to_read_df=to_read_df,
+        book_tag_features_df=book_tag_features_df,
+        to_read_weight=to_read_weight,
+    )
+
+    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    if relevant_test_df.empty:
+        return {"precision@k": 0.0, "recall@k": 0.0, "evaluated_users": 0}
+
+    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
+    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
+    if max_users is not None:
+        common_users = common_users[:max_users]
+
+    user_ids = user_item_matrix.index.to_numpy()
+    item_ids = user_item_matrix.columns.to_numpy()
+    matrix_values = user_item_matrix.to_numpy(dtype=np.float32, copy=False)
+    user_to_pos = {uid: i for i, uid in enumerate(user_ids)}
+    eval_positions = np.array([user_to_pos[user_id] for user_id in common_users], dtype=np.int64)
+
+    # Use a wider neighbor set so reranking receives a richer candidate pool.
+    neighbor_count = min(max(20, candidate_n // 2) + 1, len(user_item_matrix))
+    distances_batch, indices_batch = model.kneighbors(
+        matrix_values[eval_positions],
+        n_neighbors=neighbor_count,
+    )
+
+    precisions = []
+    recalls = []
+
+    for i, user_id in enumerate(common_users, start=1):
+        user_pos = eval_positions[i - 1]
+        relevant_items = relevant_by_user[user_id]
+
+        candidate_df = recommend_candidates_fast_from_neighbors(
+            user_pos=user_pos,
+            neighbor_positions=indices_batch[i - 1],
+            neighbor_distances=distances_batch[i - 1],
+            matrix_values=matrix_values,
+            item_ids=item_ids,
+            n=max(k, candidate_n),
+        )
+
+        if candidate_df.empty:
+            recommended_items = []
+        else:
+            # Minimal schema expected by reranker.
+            candidate_df["title"] = ""
+            candidate_df["authors"] = ""
+            reranked_df = rerank_recommendations_hybrid(
+                recommendations_df=candidate_df,
+                user_id=user_id,
+                book_tag_features_df=book_tag_features_df,
+                user_tag_profile_df=user_tag_profile_df,
+                to_read_df=to_read_df,
+                collaborative_weight=collaborative_weight,
+                content_weight=content_weight,
+                to_read_weight=to_read_weight,
+            )
+            recommended_items = reranked_df["book_id"].head(k).tolist()
+
+        precisions.append(precision_at_k(recommended_items, relevant_items, k))
+        recalls.append(recall_at_k(recommended_items, relevant_items, k))
+
+        if progress_every and i % progress_every == 0:
+            print(f"Processed {i}/{len(common_users)} users (hybrid KNN)...")
+
+    avg_precision = float(np.mean(precisions)) if precisions else 0.0
+    avg_recall = float(np.mean(recalls)) if recalls else 0.0
+
+    return {
+        "precision@k": round(avg_precision, 4),
+        "recall@k": round(avg_recall, 4),
+        "evaluated_users": len(precisions),
+    }
+
+
+def evaluate_model_hybrid_svd(
+    ratings_df=None,
+    books_df=None,
+    book_tag_features_df=None,
+    to_read_df=None,
+    k=5,
+    candidate_n=30,
+    content_candidate_n=None,
+    test_size=0.2,
+    random_state=42,
+    max_users=None,
+    min_test_rating=3.0,
+    progress_every=50,
+    n_factors=50,
+    collaborative_weight=0.7,
+    content_weight=0.2,
+    to_read_weight=0.1,
+):
+    """
+    Evaluate SVD + hybrid reranking (tags + to-read).
+    """
+    if book_tag_features_df is None or to_read_df is None:
+        raise ValueError("Hybrid SVD evaluation requires book_tag_features_df and to_read_df.")
+
+    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    split_idx = int(len(shuffled) * (1 - test_size))
+    train_df = shuffled.iloc[:split_idx].copy()
+    test_df = shuffled.iloc[split_idx:].copy()
+
+    user_item_matrix = create_user_item_matrix(train_df)
+    user_item_matrix = fill_missing(user_item_matrix)
+
+    from src.matrix_factorization_model import build_svd_model
+    svd_model = build_svd_model(user_item_matrix, n_factors=n_factors)
+    knn_model = build_knn_model(user_item_matrix)
+
+    user_tag_profile_df = build_user_tag_profile(
+        ratings_df=train_df,
+        to_read_df=to_read_df,
+        book_tag_features_df=book_tag_features_df,
+        to_read_weight=to_read_weight,
+    )
+
+    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    if relevant_test_df.empty:
+        return {"precision@k": 0.0, "recall@k": 0.0, "evaluated_users": 0}
+
+    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
+    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
+    if max_users is not None:
+        common_users = common_users[:max_users]
+
+    user_ids = user_item_matrix.index.to_numpy()
+    item_ids = user_item_matrix.columns.to_numpy()
+    matrix_values_dense = user_item_matrix.to_numpy(dtype=np.float64)
+    matrix_values = user_item_matrix.to_numpy(dtype=np.float32, copy=False)
+    user_to_pos = {uid: i for i, uid in enumerate(user_ids)}
+    eval_positions = np.array([user_to_pos[user_id] for user_id in common_users], dtype=np.int64)
+
+    neighbor_count = min(max(20, candidate_n // 2) + 1, len(user_item_matrix))
+    distances_batch, indices_batch = knn_model.kneighbors(
+        matrix_values[eval_positions],
+        n_neighbors=neighbor_count,
+    )
+
+    precisions = []
+    recalls = []
+
+    for i, user_id in enumerate(common_users, start=1):
+        user_pos = eval_positions[i - 1]
+        relevant_items = relevant_by_user[user_id]
+
+        user_vector = matrix_values_dense[user_pos]
+        user_latent = svd_model.transform(user_vector.reshape(1, -1))[0]
+        item_latents = svd_model.components_.T
+
+        similarities = item_latents @ user_latent / (
+            np.linalg.norm(item_latents, axis=1) * np.linalg.norm(user_latent) + 1e-9
+        )
+
+        already_rated = user_vector > 0
+        similarities[already_rated] = -np.inf
+
+        finite_mask = np.isfinite(similarities)
+        candidate_count = int(finite_mask.sum())
+
+        if candidate_count == 0:
+            recommended_items = []
+        else:
+            svd_candidate_df = recommend_candidates_with_content_boost(
+                user_id=user_id,
+                similarities=similarities,
+                item_ids=item_ids,
+                already_rated_mask=already_rated,
+                book_tag_features_df=book_tag_features_df,
+                user_tag_profile_df=user_tag_profile_df,
+                candidate_n=max(k, candidate_n),
+                content_candidate_n=content_candidate_n,
+            )
+
+            knn_candidate_df = recommend_candidates_fast_from_neighbors(
+                user_pos=user_pos,
+                neighbor_positions=indices_batch[i - 1],
+                neighbor_distances=distances_batch[i - 1],
+                matrix_values=matrix_values,
+                item_ids=item_ids,
+                n=max(k, candidate_n),
+            )
+
+            candidate_df = pd.concat([svd_candidate_df, knn_candidate_df], ignore_index=True)
+
+            if not candidate_df.empty:
+                candidate_df = candidate_df.groupby("book_id", as_index=False)["score"].max()
+
+            if candidate_df.empty:
+                recommended_items = []
+            else:
+                # Minimal schema expected by reranker.
+                candidate_df["title"] = ""
+                candidate_df["authors"] = ""
+                reranked_df = rerank_recommendations_hybrid(
+                    recommendations_df=candidate_df,
+                    user_id=user_id,
+                    book_tag_features_df=book_tag_features_df,
+                    user_tag_profile_df=user_tag_profile_df,
+                    to_read_df=to_read_df,
+                    collaborative_weight=collaborative_weight,
+                    content_weight=content_weight,
+                    to_read_weight=to_read_weight,
+                )
+                recommended_items = reranked_df["book_id"].head(k).tolist()
+        precisions.append(precision_at_k(recommended_items, relevant_items, k))
+        recalls.append(recall_at_k(recommended_items, relevant_items, k))
+
+        if progress_every and i % progress_every == 0:
+            print(f"Processed {i}/{len(common_users)} users (hybrid SVD)...")
+
+    avg_precision = float(np.mean(precisions)) if precisions else 0.0
+    avg_recall = float(np.mean(recalls)) if recalls else 0.0
+
+    return {
+        "precision@k": round(avg_precision, 4),
+        "recall@k": round(avg_recall, 4),
+        "evaluated_users": len(precisions),
+    }
