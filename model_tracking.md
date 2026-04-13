@@ -69,6 +69,14 @@ content_weight = 0.3
 to_read_weight = 0.1
 ```
 
+| Model                             | Precision@5 | Recall@5 | Evaluated Users |
+| --------------------------------- | ----------- | -------- | --------------- |
+| KNN                               | 0.044       | 0.0665   | 100             |
+| KNN + Hybrid rerank               | 0.092       | 0.1870   | 100             |
+| SVD (120 factors)                 | 0.052       | 0.0967   | 100             |
+| SVD + Hybrid rerank (120 factors) | 0.060       | 0.1102   | 100             |
+| SVD tuned (120 factors)           | 0.052       | 0.0967   | 100             |
+
 ## Final Model
 
 We selected **KNN + Hybrid Reranking** as our final model due to superior performance.
