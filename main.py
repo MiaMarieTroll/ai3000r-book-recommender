@@ -42,7 +42,7 @@ def print_result(title, value, max_rows=None):
 
 
 def main():
-    svd_factors = 120
+    svd_factors = 300
 
     # Hybrid weights (set to_read_weight=0.0 to disable to-read signal).
     hybrid_weights = {
@@ -313,44 +313,6 @@ def main():
     print_result("Hybrid SVD Evaluation summary:", hybrid_svd_results)
 
     # ============================================
-    # SVD Factor Tuning
-    # ============================================
-    print("\nRunning SVD factor tuning...")
-    factor_grid = [20, 50, 80, 120]
-    tuning_rows = []
-
-    for factor in factor_grid:
-        tuned_result = evaluate_model_svd(
-            ratings_df=ratings,
-            books_df=books,
-            k=5,
-            test_size=0.2,
-            random_state=42,
-            max_users=100,
-            min_test_rating=3.0,
-            n_factors=factor,
-            progress_every=0,
-        )
-        tuning_rows.append(
-            {
-                "n_factors": factor,
-                "precision@5": tuned_result["precision@k"],
-                "recall@5": tuned_result["recall@k"],
-            }
-        )
-
-    tuning_df = pd.DataFrame(tuning_rows).sort_values(
-        by=["precision@5", "recall@5"],
-        ascending=[False, False],
-    )
-    print_result("SVD Factor Tuning Results:", tuning_df)
-
-    best_factors = int(tuning_df.iloc[0]["n_factors"])
-    best_precision = float(tuning_df.iloc[0]["precision@5"])
-    best_recall = float(tuning_df.iloc[0]["recall@5"])
-    print(f"Best SVD factors by Precision@5/Recall@5: {best_factors}")
-
-    # ============================================
     # Model Comparison
     # ============================================
     print("\n" + "=" * 60)
@@ -363,29 +325,25 @@ def main():
                 "KNN",
                 "KNN + Hybrid rerank",
                 f"SVD ({svd_factors} factors)",
-                    f"SVD + Hybrid rerank ({svd_factors} factors)",
-                f"SVD tuned ({best_factors} factors)",
+                f"SVD + Hybrid rerank ({svd_factors} factors)",
             ],
             "Precision@5": [
                 results["precision@k"],
                 hybrid_knn_results["precision@k"],
                 svd_results["precision@k"],
                 hybrid_svd_results["precision@k"],
-                best_precision,
             ],
             "Recall@5": [
                 results["recall@k"],
                 hybrid_knn_results["recall@k"],
                 svd_results["recall@k"],
                 hybrid_svd_results["recall@k"],
-                best_recall,
             ],
             "Evaluated Users": [
                 results["evaluated_users"],
                 hybrid_knn_results["evaluated_users"],
                 svd_results["evaluated_users"],
                 hybrid_svd_results["evaluated_users"],
-                svd_results["evaluated_users"],
             ],
         }
     )
