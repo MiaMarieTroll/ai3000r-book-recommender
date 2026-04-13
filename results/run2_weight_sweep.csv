@@ -1,0 +1,6 @@
+config,candidate_n,collaborative_weight,content_weight,to_read_weight,precision@k,recall@k,evaluated_users
+weight_sweep,400,0.6,0.3,0.1,0.092,0.187,100
+weight_sweep,400,0.5,0.4,0.1,0.09,0.186,100
+weight_sweep,400,0.6,0.2,0.2,0.09,0.185,100
+weight_sweep,400,0.5,0.3,0.2,0.088,0.184,100
+weight_sweep,400,0.4,0.4,0.2,0.086,0.1831,100

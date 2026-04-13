@@ -707,3 +707,140 @@ def evaluate_model_hybrid_svd(
         "recall@k": round(avg_recall, 4),
         "evaluated_users": len(precisions),
     }
+
+
+def evaluate_model_hybrid_knn_adaptive(
+    ratings_df=None,
+    books_df=None,
+    book_tag_features_df=None,
+    to_read_df=None,
+    k=5,
+    candidate_n=30,
+    test_size=0.2,
+    random_state=42,
+    max_users=None,
+    min_test_rating=3.0,
+    progress_every=50,
+    cold_user_max_interactions=10,
+    cold_weights=None,
+    warm_weights=None,
+):
+    """
+    Evaluate KNN + hybrid reranking with adaptive weights based on user history.
+
+    Cold users (few train interactions) can use a different blend than warm users.
+    """
+    if book_tag_features_df is None or to_read_df is None:
+        raise ValueError("Adaptive hybrid KNN evaluation requires book_tag_features_df and to_read_df.")
+
+    if cold_weights is None:
+        cold_weights = {
+            "collaborative_weight": 0.45,
+            "content_weight": 0.40,
+            "to_read_weight": 0.15,
+        }
+    if warm_weights is None:
+        warm_weights = {
+            "collaborative_weight": 0.65,
+            "content_weight": 0.25,
+            "to_read_weight": 0.10,
+        }
+
+    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    split_idx = int(len(shuffled) * (1 - test_size))
+    train_df = shuffled.iloc[:split_idx].copy()
+    test_df = shuffled.iloc[split_idx:].copy()
+
+    user_item_matrix = create_user_item_matrix(train_df)
+    user_item_matrix = fill_missing(user_item_matrix)
+    model = build_knn_model(user_item_matrix)
+
+    train_interactions = train_df.groupby("user_id")["book_id"].count().to_dict()
+
+    max_to_read_weight = max(
+        float(cold_weights.get("to_read_weight", 0.0)),
+        float(warm_weights.get("to_read_weight", 0.0)),
+    )
+
+    user_tag_profile_df = build_user_tag_profile(
+        ratings_df=train_df,
+        to_read_df=to_read_df,
+        book_tag_features_df=book_tag_features_df,
+        to_read_weight=max_to_read_weight,
+    )
+
+    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    if relevant_test_df.empty:
+        return {"precision@k": 0.0, "recall@k": 0.0, "evaluated_users": 0}
+
+    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
+    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
+    if max_users is not None:
+        common_users = common_users[:max_users]
+
+    user_ids = user_item_matrix.index.to_numpy()
+    item_ids = user_item_matrix.columns.to_numpy()
+    matrix_values = user_item_matrix.to_numpy(dtype=np.float32, copy=False)
+    user_to_pos = {uid: i for i, uid in enumerate(user_ids)}
+    eval_positions = np.array([user_to_pos[user_id] for user_id in common_users], dtype=np.int64)
+
+    neighbor_count = min(max(20, candidate_n // 2) + 1, len(user_item_matrix))
+    distances_batch, indices_batch = model.kneighbors(
+        matrix_values[eval_positions],
+        n_neighbors=neighbor_count,
+    )
+
+    precisions = []
+    recalls = []
+
+    for i, user_id in enumerate(common_users, start=1):
+        user_pos = eval_positions[i - 1]
+        relevant_items = relevant_by_user[user_id]
+
+        candidate_df = recommend_candidates_fast_from_neighbors(
+            user_pos=user_pos,
+            neighbor_positions=indices_batch[i - 1],
+            neighbor_distances=distances_batch[i - 1],
+            matrix_values=matrix_values,
+            item_ids=item_ids,
+            n=max(k, candidate_n),
+        )
+
+        if candidate_df.empty:
+            recommended_items = []
+        else:
+            interaction_count = int(train_interactions.get(user_id, 0))
+            selected_weights = (
+                cold_weights
+                if interaction_count <= cold_user_max_interactions
+                else warm_weights
+            )
+
+            candidate_df["title"] = ""
+            candidate_df["authors"] = ""
+            reranked_df = rerank_recommendations_hybrid(
+                recommendations_df=candidate_df,
+                user_id=user_id,
+                book_tag_features_df=book_tag_features_df,
+                user_tag_profile_df=user_tag_profile_df,
+                to_read_df=to_read_df,
+                collaborative_weight=float(selected_weights.get("collaborative_weight", 0.7)),
+                content_weight=float(selected_weights.get("content_weight", 0.2)),
+                to_read_weight=float(selected_weights.get("to_read_weight", 0.1)),
+            )
+            recommended_items = reranked_df["book_id"].head(k).tolist()
+
+        precisions.append(precision_at_k(recommended_items, relevant_items, k))
+        recalls.append(recall_at_k(recommended_items, relevant_items, k))
+
+        if progress_every and i % progress_every == 0:
+            print(f"Processed {i}/{len(common_users)} users (adaptive hybrid KNN)...")
+
+    avg_precision = float(np.mean(precisions)) if precisions else 0.0
+    avg_recall = float(np.mean(recalls)) if recalls else 0.0
+
+    return {
+        "precision@k": round(avg_precision, 4),
+        "recall@k": round(avg_recall, 4),
+        "evaluated_users": len(precisions),
+    }

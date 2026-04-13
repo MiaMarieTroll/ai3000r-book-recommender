@@ -1,0 +1,4 @@
+config,candidate_n,precision@k,recall@k,evaluated_users
+candidate_sweep,400,0.092,0.187,100
+candidate_sweep,200,0.084,0.1715,100
+candidate_sweep,100,0.084,0.1573,100

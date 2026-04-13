@@ -1,0 +1,7 @@
+config,candidate_n,cold_user_max_interactions,cold_collaborative_weight,cold_content_weight,cold_to_read_weight,warm_collaborative_weight,warm_content_weight,warm_to_read_weight,precision@k,recall@k,evaluated_users
+adaptive_policy_sweep,400,5,0.45,0.4,0.15,0.6,0.3,0.1,0.092,0.187,100
+adaptive_policy_sweep,400,5,0.4,0.45,0.15,0.6,0.3,0.1,0.092,0.187,100
+adaptive_policy_sweep,400,10,0.45,0.4,0.15,0.6,0.3,0.1,0.092,0.187,100
+adaptive_policy_sweep,400,10,0.4,0.45,0.15,0.6,0.3,0.1,0.092,0.187,100
+adaptive_policy_sweep,400,20,0.45,0.4,0.15,0.6,0.3,0.1,0.092,0.187,100
+adaptive_policy_sweep,400,20,0.4,0.45,0.15,0.6,0.3,0.1,0.092,0.187,100

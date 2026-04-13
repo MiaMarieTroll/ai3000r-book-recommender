@@ -46,9 +46,9 @@ def main():
 
     # Hybrid weights (set to_read_weight=0.0 to disable to-read signal).
     hybrid_weights = {
-        "collaborative_weight": 0.90,
-        "content_weight": 0.10,
-        "to_read_weight": 0.0,
+        "collaborative_weight": 0.60,
+        "content_weight": 0.30,
+        "to_read_weight": 0.10,
     }
 
     # ============================================
@@ -198,7 +198,7 @@ def main():
         random_state=42,
         max_users=100,
         min_test_rating=3.0,
-        candidate_n=100,
+        candidate_n=400,
         **hybrid_weights,
     )
     print_result("Hybrid KNN Evaluation summary:", hybrid_knn_results)
@@ -294,7 +294,7 @@ def main():
 
     print_result("SVD Evaluation summary:", svd_results)
 
-    print("\nRunning hybrid SVD evaluation (candidate_n=100)...")
+    print("\nRunning hybrid SVD evaluation (candidate_n=400)...")
     hybrid_svd_results = evaluate_model_hybrid_svd(
         ratings_df=ratings,
         books_df=books,
@@ -306,7 +306,7 @@ def main():
         max_users=100,
         min_test_rating=3.0,
         n_factors=svd_factors,
-        candidate_n=100,
+        candidate_n=400,
         **hybrid_weights,
     )
 

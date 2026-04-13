@@ -1,12 +1,15 @@
 # Book Recommender System
+
 **Course:** Artificial Intelligence for Business Applications — AI3000R-1 26V
 
 ---
 
 ## Description
+
 This project implements a **collaborative filtering book recommender system** using the K-Nearest Neighbors (KNN) algorithm. The system recommends books to users based on the preferences of similar users.
 
-The project is inspired by the chapter *"Building a Recommendation System" in Artificial intelligence with Python : your complete guide to building intelligent apps using Python 3.x and TensorFlow 2* and covers:
+The project is inspired by the chapter _"Building a Recommendation System" in Artificial intelligence with Python : your complete guide to building intelligent apps using Python 3.x and TensorFlow 2_ and covers:
+
 - Extracting nearest neighbors
 - Building a K-Nearest Neighbors classifier
 - Computing similarity scores
@@ -16,6 +19,7 @@ The project is inspired by the chapter *"Building a Recommendation System" in Ar
 ---
 
 ## Project Structure
+
 ```
 ai3000r-book-recommender/
 │
@@ -50,16 +54,18 @@ ai3000r-book-recommender/
 ---
 
 ## Dataset
+
 [GoodBooks-10k](https://github.com/zygmuntz/goodbooks-10k) — contains 10,000 books and ~1 million ratings from real users.
 
-| File | Description |
-|---|---|
-| `books.csv` | Book metadata (title, author, year, etc.) |
+| File          | Description                                   |
+| ------------- | --------------------------------------------- |
+| `books.csv`   | Book metadata (title, author, year, etc.)     |
 | `ratings.csv` | User ratings (`user_id`, `book_id`, `rating`) |
 
 ---
 
 ## Setup
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -69,16 +75,31 @@ pip install -r requirements.txt
 ## How to Run
 
 ### Main Pipeline
+
 ```bash
 python main.py
 ```
 
 ### Run Tests
+
 ```bash
 python -m pytest tests/ -v
 ```
 
+### Run Hybrid Tuning Sweeps
+
+```bash
+python -m src.run_hybrid_tuning
+```
+
+This runs 3 experiment phases and saves CSV outputs in `results/`:
+
+- `run1_candidate_sweep.csv`
+- `run2_weight_sweep.csv`
+- `run3_adaptive_policy_sweep.csv`
+
 Run a single test module (optional):
+
 ```bash
 python -m pytest tests/test_collaborative.py -v
 ```
@@ -86,6 +107,7 @@ python -m pytest tests/test_collaborative.py -v
 ---
 
 ## Pipeline Overview
+
 1. **Load Data** ✅ — Read `books.csv` and `ratings.csv`, print summary
 2. **Preprocess** ✅ — Clean ratings, build user-item matrix, fill missing values with 0
 3. **Baseline Model** ✅ — Recommend top-N most popular books by average rating
@@ -96,5 +118,6 @@ python -m pytest tests/test_collaborative.py -v
 ---
 
 ## Authors
+
 - Mia Marie Iversen Trollstøl — data loading, preprocessing, baseline model
 - Chui Ling Ng — collaborative filtering (KNN), evaluation
