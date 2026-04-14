@@ -43,6 +43,8 @@ def print_result(title, value, max_rows=None):
 
 def main():
     svd_factors = 300
+    recommendation_n = 10
+    target_user_id = 5
 
     # Hybrid weights (set to_read_weight=0.0 to disable to-read signal).
     hybrid_weights = {
@@ -97,7 +99,6 @@ def main():
     avg_ratings = compute_average_ratings(ratings)
     top_books = get_top_books(avg_ratings, books)
     print_result("Baseline model complete. Top 5 books:", top_books, max_rows=5)
-    #print_result("Top Books (Baseline):", top_books)
 
     # ============================================
     # Collaborative Filtering
@@ -106,13 +107,12 @@ def main():
     knn_model = build_knn_model(user_item_matrix)
     print("KNN model fitted successfully.")
 
-    target_user_id = 5
     recommendations = recommend_books(
         user_id=target_user_id,
         user_item_matrix=user_item_matrix,
         books_df=books,
         model=knn_model,
-        n=100,
+        n=recommendation_n,
         similar_k=40,
     )
 
@@ -145,7 +145,7 @@ def main():
                 user_item_matrix=user_item_matrix,
                 books_df=books,
                 model=knn_model,
-                n=100,
+                n=recommendation_n,
                 similar_k=40,
             )
 
@@ -214,13 +214,12 @@ def main():
     svd_model = build_svd_model(user_item_matrix, n_factors=svd_factors)
     print("SVD model fitted successfully.")
 
-    target_user_id = 5
     svd_recommendations = get_recommendations_svd(
         user_id=target_user_id,
         user_item_matrix=user_item_matrix,
         books_df=books,
         svd_model=svd_model,
-        n=100,
+        n=recommendation_n,
     )
 
     svd_recommendations_hybrid = rerank_recommendations_hybrid(
@@ -251,7 +250,7 @@ def main():
                 user_item_matrix=user_item_matrix,
                 books_df=books,
                 svd_model=svd_model,
-                n=100,
+                n=recommendation_n,
             )
 
             user_recs = rerank_recommendations_hybrid(

@@ -14,6 +14,57 @@ from src.collaborative_model import build_knn_model
 from src.rag.content_model import compute_content_scores, rerank_recommendations_hybrid
 
 
+EMPTY_RESULTS = {
+    "precision@k": 0.0,
+    "recall@k": 0.0,
+    "evaluated_users": 0,
+}
+
+
+def _empty_results():
+    return dict(EMPTY_RESULTS)
+
+
+def _split_train_test(ratings_df, test_size, random_state):
+    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    split_idx = int(len(shuffled) * (1 - test_size))
+    train_df = shuffled.iloc[:split_idx].copy()
+    test_df = shuffled.iloc[split_idx:].copy()
+    return train_df, test_df
+
+
+def _relevant_items_by_user(test_df, min_test_rating):
+    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    if relevant_test_df.empty:
+        return relevant_test_df, {}
+    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
+    return relevant_test_df, relevant_by_user
+
+
+def _common_users(relevant_by_user, user_item_matrix, max_users):
+    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
+    if max_users is not None:
+        common_users = common_users[:max_users]
+    return common_users
+
+
+def _finalize_metrics(precisions, recalls):
+    avg_precision = float(np.mean(precisions)) if precisions else 0.0
+    avg_recall = float(np.mean(recalls)) if recalls else 0.0
+    return {
+        "precision@k": round(avg_precision, 4),
+        "recall@k": round(avg_recall, 4),
+        "evaluated_users": len(precisions),
+    }
+
+
+def _prepare_rerank_candidates(candidate_df):
+    candidate_df = candidate_df.copy()
+    candidate_df["title"] = ""
+    candidate_df["authors"] = ""
+    return candidate_df
+
+
 def precision_at_k(recommended_items, relevant_items, k):
     if k <= 0:
         return 0.0
@@ -197,11 +248,7 @@ def evaluate_model(
     """
     if ratings_df is None:
         print("Evaluation skipped: ratings_df must be provided.")
-        return {
-            "precision@k": 0.0,
-            "recall@k": 0.0,
-            "evaluated_users": 0,
-        }
+        return _empty_results()
 
     required_cols = {"user_id", "book_id", "rating"}
     missing_cols = required_cols - set(ratings_df.columns)
@@ -210,17 +257,9 @@ def evaluate_model(
 
     if ratings_df.empty:
         print("Evaluation skipped: ratings_df is empty.")
-        return {
-            "precision@k": 0.0,
-            "recall@k": 0.0,
-            "evaluated_users": 0,
-        }
+        return _empty_results()
 
-    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
-    split_idx = int(len(shuffled) * (1 - test_size))
-
-    train_df = shuffled.iloc[:split_idx].copy()
-    test_df = shuffled.iloc[split_idx:].copy()
+    train_df, test_df = _split_train_test(ratings_df, test_size, random_state)
 
     user_item_matrix = create_user_item_matrix(train_df)
     user_item_matrix = fill_missing(user_item_matrix)
@@ -231,24 +270,16 @@ def evaluate_model(
 
     model = build_knn_model(user_item_matrix)
 
-    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    relevant_test_df, relevant_by_user = _relevant_items_by_user(test_df, min_test_rating)
 
     if relevant_test_df.empty:
         print(f"Evaluation skipped: no relevant test items found (min_rating={min_test_rating}).")
-        return {
-            "precision@k": 0.0,
-            "recall@k": 0.0,
-            "evaluated_users": 0,
-        }
-
-    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
+        return _empty_results()
 
     print(f"Test items (rating >= {min_test_rating}): {len(relevant_test_df)}")
     print(f"Users with test items: {len(relevant_by_user)}")
 
-    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
-    if max_users is not None:
-        common_users = common_users[:max_users]
+    common_users = _common_users(relevant_by_user, user_item_matrix, max_users)
 
     print(f"Evaluating {len(common_users)} users (k={k})...")
 
@@ -291,14 +322,7 @@ def evaluate_model(
         if progress_every and i % progress_every == 0:
             print(f"Processed {i}/{len(common_users)} users...")
 
-    avg_precision = float(np.mean(precisions)) if precisions else 0.0
-    avg_recall = float(np.mean(recalls)) if recalls else 0.0
-
-    results = {
-        "precision@k": round(avg_precision, 4),
-        "recall@k": round(avg_recall, 4),
-        "evaluated_users": len(precisions),
-    }
+    results = _finalize_metrics(precisions, recalls)
 
     print("\nEvaluation Results")
     print("------------------")
@@ -334,11 +358,7 @@ def evaluate_model_svd(
     """
     if ratings_df is None:
         print("Evaluation skipped: ratings_df must be provided.")
-        return {
-            "precision@k": 0.0,
-            "recall@k": 0.0,
-            "evaluated_users": 0,
-        }
+        return _empty_results()
 
     required_cols = {"user_id", "book_id", "rating"}
     missing_cols = required_cols - set(ratings_df.columns)
@@ -347,17 +367,9 @@ def evaluate_model_svd(
 
     if ratings_df.empty:
         print("Evaluation skipped: ratings_df is empty.")
-        return {
-            "precision@k": 0.0,
-            "recall@k": 0.0,
-            "evaluated_users": 0,
-        }
+        return _empty_results()
 
-    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
-    split_idx = int(len(shuffled) * (1 - test_size))
-
-    train_df = shuffled.iloc[:split_idx].copy()
-    test_df = shuffled.iloc[split_idx:].copy()
+    train_df, test_df = _split_train_test(ratings_df, test_size, random_state)
 
     user_item_matrix = create_user_item_matrix(train_df)
     user_item_matrix = fill_missing(user_item_matrix)
@@ -369,24 +381,16 @@ def evaluate_model_svd(
     from src.matrix_factorization_model import build_svd_model
     svd_model = build_svd_model(user_item_matrix, n_factors=n_factors)
 
-    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    relevant_test_df, relevant_by_user = _relevant_items_by_user(test_df, min_test_rating)
 
     if relevant_test_df.empty:
         print(f"Evaluation skipped: no relevant test items found (min_rating={min_test_rating}).")
-        return {
-            "precision@k": 0.0,
-            "recall@k": 0.0,
-            "evaluated_users": 0,
-        }
-
-    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
+        return _empty_results()
 
     print(f"Test items (rating >= {min_test_rating}): {len(relevant_test_df)}")
     print(f"Users with test items: {len(relevant_by_user)}")
 
-    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
-    if max_users is not None:
-        common_users = common_users[:max_users]
+    common_users = _common_users(relevant_by_user, user_item_matrix, max_users)
 
     print(f"Evaluating {len(common_users)} users (k={k}, n_factors={n_factors})...")
 
@@ -434,14 +438,7 @@ def evaluate_model_svd(
         if progress_every and i % progress_every == 0:
             print(f"Processed {i}/{len(common_users)} users...")
 
-    avg_precision = float(np.mean(precisions)) if precisions else 0.0
-    avg_recall = float(np.mean(recalls)) if recalls else 0.0
-
-    results = {
-        "precision@k": round(avg_precision, 4),
-        "recall@k": round(avg_recall, 4),
-        "evaluated_users": len(precisions),
-    }
+    results = _finalize_metrics(precisions, recalls)
 
     print("\nEvaluation Results (SVD)")
     print("------------------------")
@@ -474,10 +471,7 @@ def evaluate_model_hybrid_knn(
     if book_tag_features_df is None or to_read_df is None:
         raise ValueError("Hybrid KNN evaluation requires book_tag_features_df and to_read_df.")
 
-    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
-    split_idx = int(len(shuffled) * (1 - test_size))
-    train_df = shuffled.iloc[:split_idx].copy()
-    test_df = shuffled.iloc[split_idx:].copy()
+    train_df, test_df = _split_train_test(ratings_df, test_size, random_state)
 
     user_item_matrix = create_user_item_matrix(train_df)
     user_item_matrix = fill_missing(user_item_matrix)
@@ -490,14 +484,11 @@ def evaluate_model_hybrid_knn(
         to_read_weight=to_read_weight,
     )
 
-    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    relevant_test_df, relevant_by_user = _relevant_items_by_user(test_df, min_test_rating)
     if relevant_test_df.empty:
-        return {"precision@k": 0.0, "recall@k": 0.0, "evaluated_users": 0}
+        return _empty_results()
 
-    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
-    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
-    if max_users is not None:
-        common_users = common_users[:max_users]
+    common_users = _common_users(relevant_by_user, user_item_matrix, max_users)
 
     user_ids = user_item_matrix.index.to_numpy()
     item_ids = user_item_matrix.columns.to_numpy()
@@ -532,8 +523,7 @@ def evaluate_model_hybrid_knn(
             recommended_items = []
         else:
             # Minimal schema expected by reranker.
-            candidate_df["title"] = ""
-            candidate_df["authors"] = ""
+            candidate_df = _prepare_rerank_candidates(candidate_df)
             reranked_df = rerank_recommendations_hybrid(
                 recommendations_df=candidate_df,
                 user_id=user_id,
@@ -552,14 +542,7 @@ def evaluate_model_hybrid_knn(
         if progress_every and i % progress_every == 0:
             print(f"Processed {i}/{len(common_users)} users (hybrid KNN)...")
 
-    avg_precision = float(np.mean(precisions)) if precisions else 0.0
-    avg_recall = float(np.mean(recalls)) if recalls else 0.0
-
-    return {
-        "precision@k": round(avg_precision, 4),
-        "recall@k": round(avg_recall, 4),
-        "evaluated_users": len(precisions),
-    }
+    return _finalize_metrics(precisions, recalls)
 
 
 def evaluate_model_hybrid_svd(
@@ -586,10 +569,7 @@ def evaluate_model_hybrid_svd(
     if book_tag_features_df is None or to_read_df is None:
         raise ValueError("Hybrid SVD evaluation requires book_tag_features_df and to_read_df.")
 
-    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
-    split_idx = int(len(shuffled) * (1 - test_size))
-    train_df = shuffled.iloc[:split_idx].copy()
-    test_df = shuffled.iloc[split_idx:].copy()
+    train_df, test_df = _split_train_test(ratings_df, test_size, random_state)
 
     user_item_matrix = create_user_item_matrix(train_df)
     user_item_matrix = fill_missing(user_item_matrix)
@@ -605,14 +585,11 @@ def evaluate_model_hybrid_svd(
         to_read_weight=to_read_weight,
     )
 
-    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    relevant_test_df, relevant_by_user = _relevant_items_by_user(test_df, min_test_rating)
     if relevant_test_df.empty:
-        return {"precision@k": 0.0, "recall@k": 0.0, "evaluated_users": 0}
+        return _empty_results()
 
-    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
-    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
-    if max_users is not None:
-        common_users = common_users[:max_users]
+    common_users = _common_users(relevant_by_user, user_item_matrix, max_users)
 
     user_ids = user_item_matrix.index.to_numpy()
     item_ids = user_item_matrix.columns.to_numpy()
@@ -680,8 +657,7 @@ def evaluate_model_hybrid_svd(
                 recommended_items = []
             else:
                 # Minimal schema expected by reranker.
-                candidate_df["title"] = ""
-                candidate_df["authors"] = ""
+                candidate_df = _prepare_rerank_candidates(candidate_df)
                 reranked_df = rerank_recommendations_hybrid(
                     recommendations_df=candidate_df,
                     user_id=user_id,
@@ -699,14 +675,7 @@ def evaluate_model_hybrid_svd(
         if progress_every and i % progress_every == 0:
             print(f"Processed {i}/{len(common_users)} users (hybrid SVD)...")
 
-    avg_precision = float(np.mean(precisions)) if precisions else 0.0
-    avg_recall = float(np.mean(recalls)) if recalls else 0.0
-
-    return {
-        "precision@k": round(avg_precision, 4),
-        "recall@k": round(avg_recall, 4),
-        "evaluated_users": len(precisions),
-    }
+    return _finalize_metrics(precisions, recalls)
 
 
 def evaluate_model_hybrid_knn_adaptive(
@@ -746,10 +715,7 @@ def evaluate_model_hybrid_knn_adaptive(
             "to_read_weight": 0.10,
         }
 
-    shuffled = ratings_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
-    split_idx = int(len(shuffled) * (1 - test_size))
-    train_df = shuffled.iloc[:split_idx].copy()
-    test_df = shuffled.iloc[split_idx:].copy()
+    train_df, test_df = _split_train_test(ratings_df, test_size, random_state)
 
     user_item_matrix = create_user_item_matrix(train_df)
     user_item_matrix = fill_missing(user_item_matrix)
@@ -769,14 +735,11 @@ def evaluate_model_hybrid_knn_adaptive(
         to_read_weight=max_to_read_weight,
     )
 
-    relevant_test_df = test_df.loc[test_df["rating"] >= min_test_rating, ["user_id", "book_id"]]
+    relevant_test_df, relevant_by_user = _relevant_items_by_user(test_df, min_test_rating)
     if relevant_test_df.empty:
-        return {"precision@k": 0.0, "recall@k": 0.0, "evaluated_users": 0}
+        return _empty_results()
 
-    relevant_by_user = relevant_test_df.groupby("user_id")["book_id"].apply(set).to_dict()
-    common_users = list(set(relevant_by_user).intersection(user_item_matrix.index))
-    if max_users is not None:
-        common_users = common_users[:max_users]
+    common_users = _common_users(relevant_by_user, user_item_matrix, max_users)
 
     user_ids = user_item_matrix.index.to_numpy()
     item_ids = user_item_matrix.columns.to_numpy()
@@ -816,8 +779,7 @@ def evaluate_model_hybrid_knn_adaptive(
                 else warm_weights
             )
 
-            candidate_df["title"] = ""
-            candidate_df["authors"] = ""
+            candidate_df = _prepare_rerank_candidates(candidate_df)
             reranked_df = rerank_recommendations_hybrid(
                 recommendations_df=candidate_df,
                 user_id=user_id,
@@ -836,11 +798,4 @@ def evaluate_model_hybrid_knn_adaptive(
         if progress_every and i % progress_every == 0:
             print(f"Processed {i}/{len(common_users)} users (adaptive hybrid KNN)...")
 
-    avg_precision = float(np.mean(precisions)) if precisions else 0.0
-    avg_recall = float(np.mean(recalls)) if recalls else 0.0
-
-    return {
-        "precision@k": round(avg_precision, 4),
-        "recall@k": round(avg_recall, 4),
-        "evaluated_users": len(precisions),
-    }
+    return _finalize_metrics(precisions, recalls)
