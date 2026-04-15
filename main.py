@@ -28,7 +28,7 @@ from src.evaluation import (
     evaluate_model_hybrid_knn,
     evaluate_model_hybrid_svd,
 )
-from src.rag.content_model import rerank_recommendations_hybrid
+from src.hybrid_model import rerank_recommendations_hybrid
 import pandas as pd
 
 

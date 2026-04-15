@@ -1,10 +1,10 @@
 """
-Tests for hybrid content reranking utilities.
+Tests for hybrid reranking utilities.
 """
 
 import pandas as pd
 
-from src.rag.content_model import rerank_recommendations_hybrid
+from src.hybrid_model import rerank_recommendations_hybrid
 
 
 def test_rerank_recommendations_hybrid_returns_expected_columns():
@@ -67,3 +67,4 @@ def test_rerank_recommendations_hybrid_empty_input():
     )
 
     assert result.empty
+
