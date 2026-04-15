@@ -1,47 +1,20 @@
-"""
-RAG RETRIEVER MODULE (Future Extension)
+"""RAG retriever placeholder.
 
-This module is intended to implement the retrieval component
-of a Retrieval-Augmented Generation (RAG) pipeline.
-
-The retriever would identify relevant contextual information
-(e.g., book descriptions or metadata) based on user preferences
-or recommended items.
-
-Status:
-    TODO – Not implemented.
-    To be developed only after the core ML recommender system
-    (training, validation, evaluation) is completed.
+Status: future work. This module is intentionally not implemented yet.
 """
 
 
 class Retriever:
-    def __init__(self, book_data)
-        """
-        TODO:
-        - Preprocess textual documents (e.g., book descriptions)
-        - Convert documents into vector representations
-          (e.g., TF-IDF, embeddings)
-        - Build a similarity index (e.g., cosine similarity, FAISS)
-
-        Parameters:
-            documents (list[str]): Text corpus for retrieval
-        """
+    def __init__(self, book_data):
+        """Initialize retriever placeholder with source book data."""
         self.book_data = book_data
         raise NotImplementedError(
-            "Retriever is not implemented. "
-            "This is a proposed future enhancement."
+            "Retriever is not implemented yet. "
+            "Planned for a future full RAG pipeline."
         )
 
     def retrieve(self, top_books, k=3):
-        """
-        TODO:
-
-        Retrieve k books excluding the top_books.
-        TODO: Replace with semantic retrieval or vector database.
-        """
-        candidates = [b for b in self.book_data if b['title'] not in top_books]
-        return candidates[:k]
+        """Retrieve relevant context for top books (future implementation)."""
         raise NotImplementedError(
-            "Retrieval functionality not implemented."
+            "Retrieval functionality is not implemented yet."
         )

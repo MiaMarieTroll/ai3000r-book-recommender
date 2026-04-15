@@ -11,7 +11,7 @@ if __package__ is None or __package__ == "":
 
 from src.preprocessing import create_user_item_matrix, fill_missing, build_user_tag_profile
 from src.collaborative_model import build_knn_model
-from src.rag.content_model import compute_content_scores, rerank_recommendations_hybrid
+from src.hybrid_model import compute_content_scores, rerank_recommendations_hybrid
 
 
 EMPTY_RESULTS = {

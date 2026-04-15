@@ -1,50 +1,20 @@
-"""
-RAG GENERATOR MODULE (Future Extension)
+"""RAG generator placeholder.
 
-This module is intended to implement the generative component
-of the RAG pipeline.
-
-The generator would produce natural language explanations
-for recommendations based on retrieved contextual information.
-
-Status:
-    TODO – Not implemented.
-    Planned after validation of the core hybrid recommender.
+Status: future work. This module is intentionally not implemented yet.
 """
 
 
 class Generator:
     def __init__(self, model_name=None):
-        """
-        TODO:
-        - Initialize language model (local or API-based)
-        - Configure prompt template
-        - Define explanation structure
-
-        Parameters:
-            model_name (str, optional): Name of LLM to use
-        """
+        """Initialize generator placeholder with optional model name."""
         self.model_name = model_name
         raise NotImplementedError(
-            "Generator is not implemented. "
-            "Planned as a future explainability extension."
+            "Generator is not implemented yet. "
+            "Planned for a future full RAG pipeline."
         )
 
     def generate(self, user_profile, recommended_items, retrieved_context):
-        """
-        TODO:
-        - Construct structured prompt
-        - Integrate retrieved contextual information
-        - Generate natural language explanation
-
-        Parameters:
-            user_profile (str)
-            recommended_items (list[str])
-            retrieved_context (list[str])
-
-        Returns:
-            explanation (str)
-        """
+        """Generate explanation text from retrieved context (future implementation)."""
         raise NotImplementedError(
-            "Generation functionality not implemented."
+            "Generation functionality is not implemented yet."
         )

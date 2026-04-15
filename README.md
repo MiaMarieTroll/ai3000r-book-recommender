@@ -6,67 +6,105 @@
 
 ## Description
 
-This project implements a **collaborative filtering book recommender system** using the K-Nearest Neighbors (KNN) algorithm. The system recommends books to users based on the preferences of similar users.
+This project implements a **hybrid book recommender system** using multiple approaches:
 
-The project is inspired by the chapter _"Building a Recommendation System" in Artificial intelligence with Python : your complete guide to building intelligent apps using Python 3.x and TensorFlow 2_ and covers:
+- Baseline popularity model (average rating + rating count)
+- Collaborative filtering with KNN (user-based nearest neighbors)
+- Matrix factorization with SVD (latent-factor collaborative filtering)
+- Hybrid reranking that combines collaborative score, content/tag affinity, and to-read signals
 
-- Extracting nearest neighbors
-- Building a K-Nearest Neighbors classifier
-- Computing similarity scores
-- Finding similar users using collaborative filtering
-- Building a book recommendation system
+The project is inspired by recommender-system methods from course material and adapted to books.
+
+---
+
+## Current Scope and RAG Status
+
+### Implemented
+
+| Component | Status | Notes |
+| --- | --- | --- |
+| Data loading and validation | Implemented | Loads `books`, `ratings`, `book_tags`, `tags`, `to_read` |
+| Preprocessing | Implemented | Cleaning, user-item matrix, and missing-value handling |
+| Baseline recommender | Implemented | Popularity-based ranking |
+| KNN collaborative filtering | Implemented | User-based cosine similarity |
+| SVD matrix factorization | Implemented | Latent-factor recommendations |
+| Hybrid reranking | Implemented | `src/hybrid_model.py` |
+| Evaluation | Implemented | Precision@K and Recall@K for KNN/SVD and hybrid variants |
+| Hybrid tuning sweeps | Implemented | `src/run_hybrid_tuning.py` |
+
+### Future work (not implemented yet)
+
+| Module | Status | Notes |
+| --- | --- | --- |
+| `src/rag/retriever.py` | Not implemented | Placeholder/TODO |
+| `src/rag/generator.py` | Not implemented | Placeholder/TODO |
+| `src/rag/rag_pipeline.py` | Partial scaffold | Depends on retriever and generator |
+
+> Note: Hybrid reranking is implemented. Full Retrieval-Augmented Generation (RAG) is not implemented yet.
 
 ---
 
 ## Project Structure
 
-```
+```text
 ai3000r-book-recommender/
-│
-├── data/
-│   ├── books.csv           # Book metadata
-│   └── ratings.csv         # User ratings
-│
-├── src/
-│   ├── data_loader.py       # Load and validate datasets
-│   ├── preprocessing.py     # Clean data, build user-item matrix
-│   ├── baseline_model.py    # Popularity-based baseline recommender
-│   ├── collaborative_model.py  # KNN collaborative filtering
-│   ├── evaluation.py        # Precision@K, Recall@K metrics
-│   └── rag/
-│       ├── content_model.py     # Content-based filtering (Future)
-│       ├── retriever.py         # RAG retriever (Future)
-│       ├── generator.py         # RAG generator (Future)
-│       └── rag_pipeline.py      # RAG pipeline (Future)
-│
-├── tests/
-│   ├── __init__.py
-│   ├── test_data_loader.py
-│   ├── test_preprocessing.py
-│   ├── test_baseline_model.py
-│   └── test_collaborative.py  # Tests for collaborative filtering
-│
-├── main.py                  # Main pipeline
-├── requirements.txt         # Project dependencies
-└── README.md
+|
++-- data/
+|   +-- books.csv
+|   +-- ratings.csv
+|   +-- book_tags.csv
+|   +-- tags.csv
+|   +-- to_read.csv
+|
++-- src/
+|   +-- data_loader.py
+|   +-- preprocessing.py
+|   +-- baseline_model.py
+|   +-- collaborative_model.py
+|   +-- matrix_factorization_model.py
+|   +-- hybrid_model.py
+|   +-- evaluation.py
+|   +-- run_hybrid_tuning.py
+|   +-- rag/
+|       +-- content_model.py      # Backward-compatibility shim
+|       +-- retriever.py          # Future work
+|       +-- generator.py          # Future work
+|       +-- rag_pipeline.py       # Future work
+|
++-- tests/
+|   +-- __init__.py
+|   +-- test_data_loader.py
+|   +-- test_preprocessing.py
+|   +-- test_baseline_model.py
+|   +-- test_collaborative.py
+|   +-- test_hybrid_model.py
+|
++-- main.py
++-- requirements.txt
++-- README.md
 ```
 
 ---
 
 ## Dataset
 
-[GoodBooks-10k](https://github.com/zygmuntz/goodbooks-10k) — contains 10,000 books and ~1 million ratings from real users.
+This project uses the [GoodBooks-10k dataset](https://github.com/zygmuntz/goodbooks-10k).
 
-| File          | Description                                   |
-| ------------- | --------------------------------------------- |
-| `books.csv`   | Book metadata (title, author, year, etc.)     |
+| File | Description |
+| --- | --- |
+| `books.csv` | Book metadata (`id`, title, author, etc.) |
 | `ratings.csv` | User ratings (`user_id`, `book_id`, `rating`) |
+| `book_tags.csv` | Book-to-tag links with tag counts |
+| `tags.csv` | Tag ID to tag name mapping |
+| `to_read.csv` | User to-read lists |
 
 ---
 
 ## Setup
 
-```bash
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
@@ -74,50 +112,52 @@ pip install -r requirements.txt
 
 ## How to Run
 
-### Main Pipeline
+### Main pipeline
 
-```bash
+```powershell
 python main.py
 ```
 
-### Run Tests
+### Run all tests
 
-```bash
+```powershell
 python -m pytest tests/ -v
 ```
 
-### Run Hybrid Tuning Sweeps
+### Run one test module (optional)
 
-```bash
+```powershell
+python -m pytest tests/test_collaborative.py -v
+```
+
+### Run hybrid tuning sweeps
+
+```powershell
 python -m src.run_hybrid_tuning
 ```
 
-This runs 3 experiment phases and saves CSV outputs in `results/`:
+This runs three experiment phases and saves CSV files in `results/`:
 
 - `run1_candidate_sweep.csv`
 - `run2_weight_sweep.csv`
 - `run3_adaptive_policy_sweep.csv`
 
-Run a single test module (optional):
-
-```bash
-python -m pytest tests/test_collaborative.py -v
-```
-
 ---
 
 ## Pipeline Overview
 
-1. **Load Data** ✅ — Read `books.csv` and `ratings.csv`, print summary
-2. **Preprocess** ✅ — Clean ratings, build user-item matrix, fill missing values with 0
-3. **Baseline Model** ✅ — Recommend top-N most popular books by average rating
-4. **Collaborative Filtering** ✅ — KNN model finds similar users and recommends books they liked
-5. **Evaluation** 📝 — Measure recommendation quality with Precision@K and Recall@K (in progress)
-6. **Testing** ✅ — Automated tests for `data_loader`, `preprocessing`, `baseline_model`, and `collaborative_model`
+1. **Load data** - read and validate all required datasets
+2. **Preprocess** - clean ratings, build user-item matrix, fill missing values
+3. **Baseline model** - popularity-based top-N recommendations
+4. **KNN model** - collaborative filtering from similar users
+5. **Hybrid reranking (KNN output)** - blend collaborative, content tags, and to-read signals
+6. **SVD model** - latent-factor recommendations
+7. **Hybrid reranking (SVD output)** - rerank SVD candidates with the same hybrid logic
+8. **Evaluation** - compare KNN, KNN+Hybrid, SVD, and SVD+Hybrid with Precision@5 and Recall@5
 
 ---
 
 ## Authors
 
-- Mia Marie Iversen Trollstøl — data loading, preprocessing, baseline model
-- Chui Ling Ng — collaborative filtering (KNN), evaluation
+- Mia Marie Iversen Trollstol - data loading, preprocessing, baseline model
+- Chui Ling Ng - collaborative filtering (KNN), SVD, hybrid reranking, evaluation
