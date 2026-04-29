@@ -220,7 +220,7 @@ def main():
         user_item_matrix=user_item_matrix,
         books_df=books,
         svd_model=svd_model,
-        n=recommendation_n,
+        n=candidate_n,
     )
 
     svd_recommendations_hybrid = rerank_recommendations_hybrid(
@@ -230,7 +230,7 @@ def main():
         user_tag_profile_df=user_tag_profile,
         to_read_df=to_read,
         **hybrid_weights,
-    )
+    ).head(recommendation_n)
     print_result(
         "SVD hybrid recommendations for user id " + str(target_user_id) + ":",
         svd_recommendations_hybrid,
@@ -251,7 +251,7 @@ def main():
                 user_item_matrix=user_item_matrix,
                 books_df=books,
                 svd_model=svd_model,
-                n=recommendation_n,
+                n=candidate_n,
             )
 
             user_recs = rerank_recommendations_hybrid(
@@ -261,7 +261,7 @@ def main():
                 user_tag_profile_df=user_tag_profile,
                 to_read_df=to_read,
                 **hybrid_weights,
-            )
+            ).head(recommendation_n)
             
             # Get the top recommended book for each user
             if len(user_recs) > 0:
