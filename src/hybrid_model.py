@@ -13,10 +13,13 @@ import pandas as pd
 def _min_max_normalize(series):
     if series.empty:
         return series
+
     min_val = series.min()
     max_val = series.max()
+
     if max_val == min_val:
         return pd.Series([0.0] * len(series), index=series.index)
+
     return (series - min_val) / (max_val - min_val)
 
 
@@ -26,17 +29,13 @@ def _safe_normalize_weights(collaborative_weight, content_weight, to_read_weight
         "content": max(float(content_weight), 0.0),
         "to_read": max(float(to_read_weight), 0.0),
     }
+
     total = sum(weights.values())
+
     if total <= 0:
         return {"collaborative": 1.0, "content": 0.0, "to_read": 0.0}
+
     return {name: value / total for name, value in weights.items()}
-
-
-def _reciprocal_rank_score(values, ascending=False, k=60):
-    if len(values) == 0:
-        return pd.Series(dtype=float)
-    rank = values.rank(method="average", ascending=ascending)
-    return 1.0 / (k + rank)
 
 
 def compute_content_scores(
@@ -49,12 +48,14 @@ def compute_content_scores(
     Compute content affinity score for each candidate book based on user tag profile.
     """
     user_profile = user_tag_profile_df[user_tag_profile_df["user_id"] == user_id]
+
     if user_profile.empty:
         return {book_id: 0.0 for book_id in candidate_book_ids}
 
     candidate_tags = book_tag_features_df[
         book_tag_features_df["book_id"].isin(candidate_book_ids)
     ]
+
     if candidate_tags.empty:
         return {book_id: 0.0 for book_id in candidate_book_ids}
 
@@ -63,19 +64,34 @@ def compute_content_scores(
         on="tag_name",
         how="left",
     )
+
     merged["tag_score"] = merged["tag_score"].fillna(0.0)
     merged["content_contribution"] = merged["tag_weight"] * merged["tag_score"]
 
-    scores = merged.groupby("book_id", as_index=True)["content_contribution"].sum().to_dict()
-    return {book_id: float(scores.get(book_id, 0.0)) for book_id in candidate_book_ids}
+    scores = (
+        merged.groupby("book_id", as_index=True)["content_contribution"]
+        .sum()
+        .to_dict()
+    )
+
+    return {
+        book_id: float(scores.get(book_id, 0.0))
+        for book_id in candidate_book_ids
+    }
 
 
 def compute_to_read_boosts(user_id, candidate_book_ids, to_read_df):
     """
     Return binary boosts for candidates that appear in a user's to-read list.
     """
-    user_to_read = set(to_read_df.loc[to_read_df["user_id"] == user_id, "book_id"].tolist())
-    return {book_id: 1.0 if book_id in user_to_read else 0.0 for book_id in candidate_book_ids}
+    user_to_read = set(
+        to_read_df.loc[to_read_df["user_id"] == user_id, "book_id"].tolist()
+    )
+
+    return {
+        book_id: 1.0 if book_id in user_to_read else 0.0
+        for book_id in candidate_book_ids
+    }
 
 
 def rerank_recommendations_hybrid(
@@ -98,7 +114,9 @@ def rerank_recommendations_hybrid(
     reranked = recommendations_df.copy()
     candidate_book_ids = reranked["book_id"].tolist()
 
-    reranked["collaborative_score_norm"] = _min_max_normalize(reranked["score"].astype(float))
+    reranked["collaborative_score_norm"] = _min_max_normalize(
+        reranked["score"].astype(float)
+    )
 
     content_scores = compute_content_scores(
         user_id=user_id,
@@ -106,14 +124,19 @@ def rerank_recommendations_hybrid(
         book_tag_features_df=book_tag_features_df,
         user_tag_profile_df=user_tag_profile_df,
     )
+
     reranked["content_score"] = reranked["book_id"].map(content_scores).fillna(0.0)
-    reranked["content_score_norm"] = _min_max_normalize(reranked["content_score"].astype(float))
+
+    reranked["content_score_norm"] = _min_max_normalize(
+        reranked["content_score"].astype(float)
+    )
 
     to_read_scores = compute_to_read_boosts(
         user_id=user_id,
         candidate_book_ids=candidate_book_ids,
         to_read_df=to_read_df,
     )
+
     reranked["to_read_score"] = reranked["book_id"].map(to_read_scores).fillna(0.0)
 
     content_matches = int((reranked["content_score"] > 0).sum())
@@ -134,16 +157,12 @@ def rerank_recommendations_hybrid(
     else:
         coverage = content_matches / max(len(reranked), 1)
         content_boost = 0.5 + coverage
+
         adaptive_weights = _safe_normalize_weights(
             collaborative_weight=base_weights["collaborative"],
             content_weight=base_weights["content"] * content_boost,
             to_read_weight=base_weights["to_read"],
         )
-
-    # Blend score-level signals with reciprocal-rank fusion for stability.
-    rr_collab = _reciprocal_rank_score(reranked["score"].astype(float), ascending=False)
-    rr_content = _reciprocal_rank_score(reranked["content_score"].astype(float), ascending=False)
-    rr_to_read = _reciprocal_rank_score(reranked["to_read_score"].astype(float), ascending=False)
 
     reranked["hybrid_score"] = (
         adaptive_weights["collaborative"] * reranked["collaborative_score_norm"]
@@ -151,17 +170,9 @@ def rerank_recommendations_hybrid(
         + adaptive_weights["to_read"] * reranked["to_read_score"]
     )
 
-    reranked["hybrid_rrf"] = (
-        adaptive_weights["collaborative"] * rr_collab
-        + adaptive_weights["content"] * rr_content
-        + adaptive_weights["to_read"] * rr_to_read
-    )
-
-    reranked["hybrid_score"] = 0.6 * reranked["hybrid_score"] + 0.4 * reranked["hybrid_rrf"]
     reranked["content_matches"] = content_matches
 
     reranked = reranked.sort_values("hybrid_score", ascending=False).reset_index(drop=True)
     reranked["rank"] = reranked.index + 1
 
     return reranked
-
