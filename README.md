@@ -13,7 +13,7 @@ This project implements a **hybrid book recommender system** using multiple appr
 - Matrix factorization with SVD (latent-factor collaborative filtering)
 - Hybrid reranking that combines collaborative score, content/tag affinity, and to-read signals
 
-The project is inspired by recommender-system methods from course material and adapted to books.
+The project is inspired by recommender-system methods from course material.
 
 ---
 
@@ -40,7 +40,6 @@ The project is inspired by recommender-system methods from course material and a
 | `src/rag/generator.py` | Not implemented | Placeholder/TODO |
 | `src/rag/rag_pipeline.py` | Partial scaffold | Depends on retriever and generator |
 
-> Note: Hybrid reranking is implemented. Full Retrieval-Augmented Generation (RAG) is not implemented yet.
 
 ---
 
@@ -159,5 +158,5 @@ This runs three experiment phases and saves CSV files in `results/`:
 
 ## Authors
 
-- Mia Marie Iversen Trollstol - data loading, preprocessing, baseline model
+- Mia Marie Iversen Trollstol - project setup/structure, data loading, preprocessing, baseline model and overall structure of the report and presentation.
 - Chui Ling Ng - collaborative filtering (KNN), SVD, hybrid reranking, evaluation
